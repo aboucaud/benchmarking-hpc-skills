@@ -46,5 +46,17 @@ Target is a live demo on a locally built Slurm cluster.
 - Project leads: @aboucaud, @dkn16, @djbard
 - Communication: `#benchmarking-skills` on Discord
 
+## Local Slurm cluster
+
+[`mock-cluster/`](mock-cluster/) contains a self-contained two-node Slurm
+cluster for local development and benchmark runs. It includes Docker Compose,
+Slurm accounting, SSH access, and a smoke test; it has no Dagster dependency.
+
+```bash
+cd mock-cluster
+docker compose up -d --build --wait --wait-timeout 180
+./smoke-test.sh
+```
+
 See [`CLAUDE.md`](CLAUDE.md) for details on the skills this project builds on and
 conventions to follow when adding code here.

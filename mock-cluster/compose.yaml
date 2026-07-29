@@ -1,0 +1,176 @@
+x-slurm-image: &slurm-image
+  image: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+  build:
+    context: .
+    args:
+      SLURM_TAG: ${SLURM_TAG:-slurm-25-11-2-1}
+
+x-slurm-healthcheck: &slurm-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 24
+  start_period: 10s
+
+services:
+  mysql:
+    image: mariadb:12
+    hostname: mysql
+    environment:
+      MARIADB_RANDOM_ROOT_PASSWORD: "yes"
+      MARIADB_DATABASE: slurm_acct_db
+      MARIADB_USER: slurm
+      MARIADB_PASSWORD: password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      <<: *slurm-healthcheck
+      test:
+        [
+          "CMD-SHELL",
+          "mariadb-admin ping --silent --host=127.0.0.1 --user=slurm --password=password",
+        ]
+
+  slurmdbd:
+    <<: *slurm-image
+    command: ["slurmdbd"]
+    hostname: slurmdbd
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_logs:/var/log/slurm
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      <<: *slurm-healthcheck
+      test:
+        [
+          "CMD-SHELL",
+          "ss -ltn | grep -q ':6819' && mariadb --host=mysql --user=slurm --password=password --execute='SELECT 1' >/dev/null",
+        ]
+
+  cluster-init:
+    <<: *slurm-image
+    command: ["register-cluster"]
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+    depends_on:
+      slurmdbd:
+        condition: service_healthy
+    restart: "no"
+
+  slurmctld:
+    <<: *slurm-image
+    command: ["slurmctld"]
+    hostname: slurmctld
+    cpus: 1.0
+    mem_limit: 1g
+    shm_size: 512mb
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_logs:/var/log/slurm
+      - controller_state:/var/lib/slurm
+    depends_on:
+      cluster-init:
+        condition: service_completed_successfully
+    healthcheck:
+      <<: *slurm-healthcheck
+      start_period: 15s
+      test:
+        [
+          "CMD-SHELL",
+          "scontrol ping | grep -iq 'is up'",
+        ]
+
+  login:
+    <<: *slurm-image
+    command: ["login"]
+    hostname: login
+    cpus: 1.0
+    mem_limit: 2g
+    shm_size: 512mb
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_data:/data
+      - home_dirs:/home
+    ports:
+      - "127.0.0.1:${SSH_PORT:-2223}:22"
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    healthcheck:
+      <<: *slurm-healthcheck
+      start_period: 15s
+      test:
+        [
+          "CMD-SHELL",
+          "scontrol ping | grep -iq 'is up' && ss -ltn | grep -q ':22 '",
+        ]
+
+  c1:
+    <<: *slurm-image
+    command: ["slurmd"]
+    hostname: c1
+    privileged: true
+    cpus: 2.0
+    mem_limit: 4g
+    shm_size: 1gb
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_logs:/var/log/slurm
+      - slurm_data:/data
+      - home_dirs:/home
+      - c1_state:/var/lib/slurmd
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    healthcheck:
+      <<: *slurm-healthcheck
+      start_period: 15s
+      test:
+        [
+          "CMD-SHELL",
+          "scontrol show node c1 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+        ]
+
+  c2:
+    <<: *slurm-image
+    command: ["slurmd"]
+    hostname: c2
+    privileged: true
+    cpus: 2.0
+    mem_limit: 4g
+    shm_size: 1gb
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_logs:/var/log/slurm
+      - slurm_data:/data
+      - home_dirs:/home
+      - c2_state:/var/lib/slurmd
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    healthcheck:
+      <<: *slurm-healthcheck
+      start_period: 15s
+      test:
+        [
+          "CMD-SHELL",
+          "scontrol show node c2 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+        ]
+
+volumes:
+  mysql_data:
+  munge_config:
+  slurm_config:
+  slurm_logs:
+  slurm_data:
+  home_dirs:
+  controller_state:
+  c1_state:
+  c2_state:
