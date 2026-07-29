@@ -4,12 +4,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository is a **greenfield project** — at present it contains only a `LICENSE`
-file. There is no build system, source tree, or test suite yet. The sections below
-describe what this repo is *for* and what it will be built out of, so that whichever
-Claude instance starts adding code makes choices consistent with that plan rather than
-guessing. Once real code, configs, or CI lands, this file should be updated with actual
-build/lint/test commands and a description of the resulting architecture.
+Docs, plus the workspace scaffolding described below. The harness itself is still being
+built out, PR by PR, against the plan in
+[issue #1](https://github.com/aboucaud/benchmarking-hpc-skills/issues/1). Update the
+architecture notes in this file as each component lands, rather than after the fact.
+
+## Commands
+
+```bash
+uv sync --extra dev       # install
+uv run pytest             # tests
+uv run ruff check .       # lint
+uv run ruff format .      # format
+```
+
+CI runs lint, format-check and tests on every PR.
+
+## Layout
+
+| Path | Holds |
+|---|---|
+| `src/hpcbench/` | the harness package (see its docstring for the module map) |
+| `benchmark/` | task definitions and center descriptors — data, not code |
+| `skills/candidates/<tier>/` | skills **under test**, installed into episode sandboxes by the harness |
+| `mock-cluster/` | @dkn16's Docker Slurm mock, the fidelity target |
+| `results/` | append-only run records; see `results/README.md` |
 
 ## Purpose
 
@@ -76,3 +95,36 @@ it can be dropped into an agent's skill set directly.
 - Do not hardcode credentials, TOTP seeds, hostnames, partitions, or account names for the
   demo cluster into source or commits; treat them the way `hpc-session` does — as
   per-deployment config the user supplies, not something to invent.
+
+### Nothing here reaches a real cluster
+
+`.claude/settings.json` denies `ssh`, `scp`, `rsync`, `hpc-session`, and every bare Slurm
+command (`sbatch`, `squeue`, `sacct`, `srun`, `module`, …). That is deliberate and should
+not be relaxed.
+
+The harness exercises Slurm through **simulator shims placed on a sandbox `PATH`**, invoked
+by the agent under test inside its own sandbox — never by the agent developing this repo.
+If you find yourself wanting to run `sbatch` directly, you are about to test against the
+wrong thing.
+
+### Several people work here agentically
+
+Five collaborators, some driving agents. Conventions that keep them from colliding:
+
+- **One branch per person per topic**, named `<user>/<topic>`. Use a git worktree if you're
+  running more than one agent at once.
+- **Stage only the files you changed.** Never `git add -A` or `git add .` — another
+  session's half-finished work may be sitting in the tree.
+- **Verify the live tree before committing** (`git status`, `git diff --staged`). Do not
+  assume the working copy is the one you left.
+- **Results are append-only.** Never edit or delete an existing `results/` run directory.
+- **Small, single-purpose PRs.** Each one should be reviewable in under ten minutes; issue
+  #1 lists the intended sequence.
+
+### Skills under test are data, not workspace skills
+
+Candidate skills live in `skills/candidates/<tier>/` and are installed into episode
+sandboxes by the harness. Do **not** install them into `.claude/skills/` — that would put
+them in the context of every agent working on the repo and contaminate every episode.
+
+Personal agent overrides belong in `.claude/settings.local.json`, which is gitignored.
