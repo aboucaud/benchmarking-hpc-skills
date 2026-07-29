@@ -54,12 +54,14 @@ prompts into `prompts/*.tmpl.md` if you obtain the PDF/supplementary material.
 The runner (submitting rendered prompts to the agent on the mock cluster) is TBD
 and shares the sandbox with `../inspect/`. Meanwhile the pieces work standalone:
 
+Commands go through uv (run `uv sync` once from `benchmark/` first):
+
 ```bash
 # the stand-in job runs anywhere, no cluster needed
-python train_stub.py --algorithm adam --problem beam --epochs 2 --seed 1 --out results/metrics.json
+uv run python train_stub.py --algorithm adam --problem beam --epochs 2 --seed 1 --out results/metrics.json
 
 # and the metric step of the oracle scores that output
-python score.py --algorithm adam --problem beam --epochs 2 --seed 1
+uv run python score.py --algorithm adam --problem beam --epochs 2 --seed 1
 ```
 
 ## Status — skeleton

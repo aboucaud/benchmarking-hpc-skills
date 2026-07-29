@@ -13,3 +13,15 @@ skills actually improve an agent's efficiency and behavior on an HPC platform.
 
 The two are designed to combine into a 2×2 (prompt format × instructions on/off); see
 `landscape.md`.
+
+## Setup
+
+This directory is a [uv](https://docs.astral.sh/uv/) project (`pyproject.toml`); all
+examples run through uv, never a global `pip`. From `benchmark/`:
+
+```bash
+uv sync          # create .venv and install dependencies (inspect-ai, pyyaml)
+uv run <cmd>     # run anything inside the environment
+```
+
+See each subdirectory's README for the specific commands.

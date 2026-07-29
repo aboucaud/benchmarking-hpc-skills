@@ -34,19 +34,21 @@ set with `--epochs`.
 
 ## Prerequisites
 
-- `pip install inspect-ai`
+- The uv environment — from `benchmark/`, run `uv sync` once (installs `inspect-ai`).
 - Docker running
 - A model provider key (e.g. `ANTHROPIC_API_KEY`)
 - The mock-cluster image referenced in `compose.yaml`
 
 ## Run
 
+All commands go through uv (no global installs). Run them from this directory:
+
 ```bash
 # baseline vs intervention, 5 trials each
-inspect eval eval.py -T variant=baseline         --model anthropic/claude-sonnet-5 --epochs 5
-inspect eval eval.py -T variant=with_instructions --model anthropic/claude-sonnet-5 --epochs 5
+uv run inspect eval eval.py -T variant=baseline          --model anthropic/claude-sonnet-5 --epochs 5
+uv run inspect eval eval.py -T variant=with_instructions --model anthropic/claude-sonnet-5 --epochs 5
 
-inspect view   # inspect transcripts + per-metric scores
+uv run inspect view   # inspect transcripts + per-metric scores
 ```
 
 Compare the two arms' `task_success` and guardrail metrics — the project thesis
