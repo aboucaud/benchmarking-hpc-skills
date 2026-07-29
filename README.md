@@ -19,9 +19,10 @@ composing existing skills rather than writing HPC guidance from scratch:
 - [`HolobiomicsLab/hpc-session`](https://github.com/HolobiomicsLab/hpc-session) — a
   cluster-agnostic wrapper for driving Slurm over one authenticated SSH session
 
-The broader motivation is documented in [`docs/prd.md`](docs/prd.md), notes synthesized
-from the summit's sessions on trust, research infrastructure, and agent architecture for
-science.
+The broader motivation is documented in [`docs/context.md`](docs/context.md), notes
+synthesized from the summit's sessions on trust, research infrastructure, and agent
+architecture for science. Concrete, in-progress planning for this project specifically
+lives in [`docs/working-notes.md`](docs/working-notes.md).
 
 ## Status
 
