@@ -11,8 +11,17 @@ operating an HPC platform measurably improves how they behave on it — loading 
 submitting and monitoring Slurm jobs, and estimating resource needs — instead of
 requiring interactive sessions and hand-holding for every task.
 
-This repo builds a bench to measure that improvement on a locally built Slurm cluster,
-composing existing skills rather than writing HPC guidance from scratch:
+Scope for this 3-day hack, as of Day 2:
+- An `INSTRUCTIONS.md` template HPC centers can host to tell agents (and humans) about
+  platform resources, environments, and rules.
+- Simple skills that consume that template to discover and use resources efficiently
+  and avoid abusive behavior, such as spamming the Slurm queue.
+- A trace-analysis/feedback skill so an agent can summarize its own run and report back
+  to platform admins, per the template's feedback section.
+- A benchmarking harness to measure whether standardized instructions actually improve
+  agent experience/efficiency on HPC — not just whether they can be written.
+
+This repo composes existing skills rather than writing HPC guidance from scratch:
 
 - [`LightconeResearch/agent-skills`](https://github.com/LightconeResearch/agent-skills/tree/feat/async-job-skills/skills/estimate)
   (`skills/estimate`) — resource estimation via pilot runs
@@ -26,7 +35,13 @@ lives in [`docs/working-notes.md`](docs/working-notes.md).
 
 ## Status
 
-Early stage — no code yet. Target is a live demo on a locally built Slurm cluster.
+Scope is fixed for this 3-day hack (see above). Two workstreams are currently in
+progress:
+
+- **Benchmarking approach/methodology** — @aboucaud
+- **Mock Slurm cluster setup** — @dkn16
+
+Target is a live demo on a locally built Slurm cluster.
 
 - Project leads: @aboucaud, @dkn16, @djbard
 - Communication: `#benchmarking-skills` on Discord

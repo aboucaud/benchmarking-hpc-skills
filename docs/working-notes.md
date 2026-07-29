@@ -156,3 +156,19 @@ and in which form (template `/agents/extra/feedback_template.md`)
   answer questions about usage stored in the `INSTRUCTIONS.md`
 - Bot hosted on the computing center with knowledge from the current status/usage of the
   nodes
+
+## Day 2 — scope confirmation & benchmarking extension
+
+The project is scoped as-is for this 3-day hack: design very simple skills that use the
+`INSTRUCTIONS.md` template above to (a) maximize efficiency at discovering and using HPC
+resources, and (b) prevent agents from doing annoying things, such as spamming the Slurm
+queue — plus the trace-analysis/feedback loop described above, where an agent summarizes
+its own run and reports back to platform admins per the template's feedback section.
+
+New extension agreed this morning: set up an environment for actually benchmarking the
+advantage of using such standardized instructions, i.e. whether they measurably improve
+agent experience/efficiency on HPC, not just whether they can be written.
+
+Ongoing actions:
+- **Alex (aboucaud)**: exploring benchmarking approaches/methodology.
+- **Kangning (dkn16)**: setting up a mock cluster with Slurm to benchmark against.

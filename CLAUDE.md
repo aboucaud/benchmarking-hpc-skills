@@ -17,21 +17,27 @@ This repo ("benchmarking-hpc-skills") is the testbed for **Benchmarking #4** fro
 [Lightcone Research AAI4Science Developer Summit](https://github.com/LightconeResearch/AAI4ScienceDeveloperSummit)
 (tracked as [issue #14](https://github.com/LightconeResearch/AAI4ScienceDeveloperSummit/issues/14)).
 
-Goal: demonstrate that giving agents explicit guidelines ("skills") for operating an HPC
-platform measurably improves their ability to act as competent cluster citizens — loading
-modules, submitting/monitoring Slurm jobs, and estimating resource needs — instead of
-requiring interactive sessions for everything.
+Scope for this 3-day hack (fixed as of Day 2 — see `docs/working-notes.md` for the full
+discussion log):
+1. An `INSTRUCTIONS.md` template HPC centers can host to tell agents (and humans) about
+   platform resources, environments, and rules.
+2. Simple skills that consume that template to discover/use resources efficiently and
+   avoid abusive behavior (e.g. spamming the Slurm queue), plus a trace-analysis/feedback
+   skill so an agent can summarize its own run for platform admins.
+3. A benchmarking harness measuring whether standardized instructions actually improve
+   agent experience/efficiency on HPC, not just whether they can be written.
 
 - Project leads: @aboucaud, @dkn16, @djbard
 - Communication: `#benchmarking-skills` on Discord
 - Target: a live demo on a locally built Slurm cluster (summit Friday demo session)
 
-The broader context (from the AAI4Science summit synthesis doc) frames the specific gap
-this project addresses: HPC skills currently degrade across model releases, there is no
-shared general→specific skill hierarchy, and HPC-specific *benchmarking* of agent skills
-is missing entirely. This repo exists to fill that last gap — build a bench that measures
-whether a given skill package actually improves agent behavior on a Slurm cluster, not
-just to write another skill.
+**Current status**: two workstreams in progress — @aboucaud is exploring benchmarking
+approaches/methodology, @dkn16 is setting up a mock Slurm cluster to benchmark against.
+
+The broader context (from the AAI4Science summit synthesis doc, `docs/context.md`) frames
+the specific gap this project addresses: HPC skills currently degrade across model
+releases, there is no shared general→specific skill hierarchy, and HPC-specific
+*benchmarking* of agent skills is missing entirely.
 
 ## Skills this project builds on
 
@@ -63,9 +69,10 @@ it can be dropped into an agent's skill set directly.
 
 ## Working on this repo
 
-- This is meant to run against a **real local Slurm cluster**, not a mock — guardrails
-  from the source skills above (rate-limit Slurm requests, don't monopolize queues, don't
-  sit in blocking watch loops) apply to any benchmarking code/harness written here too.
+- The demo target is a real local Slurm cluster, but benchmarking work in the meantime
+  runs against the mock Slurm cluster @dkn16 is setting up — guardrails from the source
+  skills above (rate-limit Slurm requests, don't monopolize queues, don't sit in blocking
+  watch loops) apply to any benchmarking code/harness written here regardless of target.
 - Do not hardcode credentials, TOTP seeds, hostnames, partitions, or account names for the
   demo cluster into source or commits; treat them the way `hpc-session` does — as
   per-deployment config the user supplies, not something to invent.
