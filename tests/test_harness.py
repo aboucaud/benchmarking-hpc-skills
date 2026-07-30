@@ -21,14 +21,15 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
 
-from hpcbench.harness import detect  # noqa: E402
+from hpcbench.harness import (
+    detect,  # noqa: E402
+    runners,  # noqa: E402
+)
 from hpcbench.harness import episode as episode_module  # noqa: E402
-from hpcbench.harness import runners  # noqa: E402
 from hpcbench.paths import BENCHMARK  # noqa: E402
 
 CASES = sorted(path.name for path in (BENCHMARK / "cases").iterdir() if path.is_dir())

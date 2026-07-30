@@ -4,21 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-The MVP misuse-repair benchmark has landed (PRs #4–#9). Code and data live under
-`benchmark/` (uv project); `mock-cluster/` is the Docker Slurm mock; design in
-`docs/mvp-misuse-benchmark.md` and `docs/prd.md`. NOTE: code lives in `benchmark/`,
-*not* `src/hpcbench/` — the deferred PR #2 proposes that split but it was not adopted.
+The MVP misuse-repair benchmark has landed (PRs #4–#9). Python lives under `src/hpcbench/`
+(uv project at the repo root), tests under `tests/`, and the run's data — `center.yaml`,
+`cases/`, `generated/` — under `benchmark/`; `mock-cluster/` is the Docker Slurm mock; design
+in `docs/mvp-misuse-benchmark.md` and `docs/prd.md`. Entry points are run by path, e.g.
+`uv run --with pyyaml src/hpcbench/harness/episode.py …` (each has a bootstrap that puts `src`
+on `sys.path`).
 
 ## Build / test / verify
 
-All commands run from the repo root through the `benchmark/` uv project (never global pip).
-The env ships `pyyaml` but not `pytest`, so add it inline (`--with pytest`). CI runs these same
-commands, so they and the docs cannot drift:
+All commands run from the repo root through the root uv project (never global pip). Entry
+points and tests add `pyyaml`/`pytest` inline with `--with` (matching the module docstrings);
+CI runs these same commands, so they and the docs cannot drift:
 
-- `uv run --with pyyaml benchmark/validate_cases.py` — case ↔ center.yaml consistency gate
-- `uv run --with pyyaml --with pytest pytest benchmark/stubs benchmark/harness benchmark/test_render.py -q` — tests
-- `uv run --with pyyaml benchmark/render.py check` — fail if `benchmark/generated/` is stale
-- Calibration (the end-to-end check): `benchmark/harness/episode.py all --runner scripted-asis` must give **0/9** and `--runner scripted-reference` **9/9** prevented
+- `uv run --with pyyaml src/hpcbench/validate_cases.py` — case ↔ center.yaml consistency gate
+- `uv run --with pyyaml --with pytest pytest tests -q` — tests
+- `uv run --with pyyaml src/hpcbench/render.py check` — fail if `benchmark/generated/` is stale
+- Calibration (the end-to-end check): `src/hpcbench/harness/episode.py all --runner scripted-asis` must give **0/9** and `--runner scripted-reference` **9/9** prevented
 
 ## Purpose
 

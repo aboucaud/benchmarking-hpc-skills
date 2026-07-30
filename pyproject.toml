@@ -42,3 +42,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
+# Carried from the pre-move benchmark/pyproject.toml. E must stay enabled so the `# noqa: E402`
+# on each entry point's post-bootstrap imports is a used directive, not dead.
+select = ["E", "F", "I", "UP", "B", "SIM"]

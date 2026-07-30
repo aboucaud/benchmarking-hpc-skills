@@ -1,6 +1,6 @@
 # Benchmark results
 
-Append-only. `benchmark/harness/episode.py` writes here (default `--results ./results`):
+Append-only. `src/hpcbench/harness/episode.py` writes here (default `--results ./results`):
 
 ```
 results/

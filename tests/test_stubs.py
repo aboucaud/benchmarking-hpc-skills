@@ -32,8 +32,10 @@ from pathlib import Path
 import pytest
 
 from hpcbench.paths import CASES  # noqa: E402
-from hpcbench.stubs import install_stubs  # noqa: E402
-from hpcbench.stubs import slurm_stub  # noqa: E402
+from hpcbench.stubs import (
+    install_stubs,  # noqa: E402
+    slurm_stub,  # noqa: E402
+)
 
 HERE = Path(install_stubs.__file__).resolve().parent
 

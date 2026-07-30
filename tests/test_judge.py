@@ -11,8 +11,6 @@ why the machinery around it has to be.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 
