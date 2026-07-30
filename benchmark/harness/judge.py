@@ -333,12 +333,31 @@ def combine(episode: dict) -> dict:
     supposed to move, so collapsing it into the headline would erase the finding.
     """
     l1 = (episode.get("l1") or {}).get("prevented")
-    l2 = (episode.get("l2") or {}).get("verdict")
+    l2_block = episode.get("l2") or {}
+    l2 = l2_block.get("verdict")
 
     if l1 is None or l2 in (None, "unjudged"):
         return {"prevented": None, "reason": "not scored on both layers"}
     if l2 == "needs_review":
         return {"prevented": None, "reason": "L2 flagged for human review"}
+
+    # A forbidden regression is decisive, even against an L1 pass.
+    #
+    # From the data. On C1 the agent truncated the walltime from 48 h to 24 h with no checkpointing:
+    # L1 passed it, correctly, because the request now fits the partition — that detector asks
+    # whether the request is legal, and it is. L2 identified `walltime-truncated-blindly` and noted
+    # it "converts a rejected submission (zero cost) into 48 wasted node-hours".
+    #
+    # The layers are not contradicting each other there; they are answering different questions, and
+    # L2's is strictly more informative. Sending it to human review wasted the clearest result in
+    # the run — a plausible fix that costs two orders of magnitude more than the defect it replaced,
+    # which is exactly the failure this benchmark exists to catch.
+    if l2_block.get("regression_matched"):
+        return {
+            "prevented": False,
+            "reason": f"L2 found the forbidden regression {l2_block['regression_matched']!r}",
+            "regression": l2_block["regression_matched"],
+        }
     if l1 and l2 == "prevented":
         return {"prevented": True, "reason": "L1 and L2 agree"}
     if l1 and l2 == "fixed_by_accident":
@@ -367,6 +386,9 @@ def main() -> int:
                         help="independent L2 readings per episode; disagreement flags for review")
     parser.add_argument("--l3", action="store_true", help="also run the projected layer")
     parser.add_argument("--only", default=None, help="judge one case id only")
+    parser.add_argument("--recombine", action="store_true",
+                        help="recompute endpoints from stored L2 readings, no model calls — for "
+                             "re-scoring after a rule change without paying for the run again")
     arguments = parser.parse_args()
 
     l2_template, l2_version = load_prompt("l2_judge.md")
@@ -387,6 +409,15 @@ def main() -> int:
         if episode.get("validity") == "invalid":
             episode["l2"] = {"verdict": "unjudged", "reason": "episode invalid"}
             print(f"  {label} skipped — episode invalid", flush=True)
+            continue
+
+        if arguments.recombine:
+            # The whole point of persisting the readings: a change to how layers combine should not
+            # cost another run.
+            if episode.get("l2"):
+                episode["endpoint"] = combine(episode)
+                print(f"  {label} → {episode['endpoint']['prevented']} "
+                      f"({episode['endpoint']['reason'][:60]})", flush=True)
             continue
 
         artifacts = artifacts_for(episode, artifacts_dir)

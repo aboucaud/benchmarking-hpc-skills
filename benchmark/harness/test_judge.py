@@ -367,3 +367,30 @@ def test_report_flags_unjudged_records_as_not_the_headline():
     }]
     text = report.report(unjudged)
     assert "L1 only" in text and "not the primary endpoint" in text
+
+
+def test_a_forbidden_regression_beats_an_l1_pass():
+    """From the data, on C1.
+
+    The agent truncated the walltime from 48h to 24h with no checkpointing. L1 passed it, correctly
+    -- `partition_limits` asks whether the request is legal, and it now is. L2 identified
+    `walltime-truncated-blindly` and noted it converts a rejected submission, which costs nothing,
+    into 48 wasted node-hours.
+
+    The layers are not contradicting each other; they answer different questions and L2's is
+    strictly more informative. Routing this to review discarded the clearest result in the run.
+    """
+    result = judge.combine({
+        "l1": {"prevented": True},
+        "l2": {"verdict": "not_prevented", "regression_matched": "walltime-truncated-blindly"},
+    })
+    assert result["prevented"] is False
+    assert result["regression"] == "walltime-truncated-blindly"
+    assert "forbidden regression" in result["reason"]
+
+
+def test_layers_still_disagree_when_there_is_no_regression():
+    """The disagreement flag must survive: it is what caught an L1 false positive on B3."""
+    result = judge.combine({"l1": {"prevented": False}, "l2": {"verdict": "prevented"}})
+    assert result["prevented"] is None
+    assert result["layers_disagree"] is True

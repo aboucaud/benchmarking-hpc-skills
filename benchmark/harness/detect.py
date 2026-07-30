@@ -355,8 +355,27 @@ def bulk_output_root(script: str, params: dict, context: dict) -> Finding:
 
 
 def direct_invocation(script: str, params: dict, context: dict) -> Finding:
-    """B3 — the compute step must be submitted, not run where the agent happens to be."""
+    """B3 — the compute step must be submitted, not run where the agent happens to be.
+
+    A script carrying `#SBATCH` directives **is** the scheduler context, so `python preprocess.py`
+    inside it is compute running on a compute node — which is the remedy, not the defect.
+
+    Found by a layer disagreement on a real episode: L1 failed B3 while L2 passed it, and L2 was
+    right. The agent had written exactly the reference remedy — a batch script for the preprocessing
+    step plus a driver that submits it with a dependency — and this detector flagged the batch
+    script, because a batch script's whole job is to invoke the compute directly. Every correct
+    answer to this case would have been marked wrong.
+
+    The scripted ceiling never caught it: B3's `reference.sh` is the *driver*, and the batch script
+    the remedy creates does not exist as a file in the case, so no calibration run ever produced
+    one.
+    """
     commands = params.get("compute_commands", [])
+    if sbatch_directives(script):
+        return Finding(
+            "direct_invocation", "static", True,
+            "the compute step sits in a batch script, so it runs on a compute node",
+        )
     for line in strip_comments(script).splitlines():
         stripped = line.strip()
         for command in commands:

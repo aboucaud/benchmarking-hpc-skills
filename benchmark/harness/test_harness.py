@@ -397,6 +397,31 @@ def test_chmod_is_not_execution():
     )
 
 
+def test_a_batch_script_containing_the_compute_step_is_the_remedy():
+    """Found by a layer disagreement on a real episode, and L2 was right.
+
+    L1 failed B3 while L2 passed it. The agent had written exactly the reference remedy -- a batch
+    script for the preprocessing step plus a driver that submits it with a dependency -- and
+    `direct_invocation` flagged the batch script, because a batch script's whole job is to invoke
+    the compute directly. Every correct answer to this case would have been marked wrong.
+
+    The scripted ceiling never caught it: B3's reference.sh is the driver, and the batch script the
+    remedy creates does not exist as a file in the case.
+    """
+    spec = case_spec("B3-login-node-compute")
+    batch = (
+        "#!/bin/bash\n#SBATCH --account=proj_astro\n#SBATCH --partition=standard\n"
+        "#SBATCH --cpus-per-task=64\n#SBATCH --time=01:00:00\n"
+        "python preprocess.py --raw $RAW --out $PREPPED --workers 64\n"
+    )
+    findings = detect.run_static(spec, batch, LIMITS)
+    assert findings[0].passed, findings[0].evidence
+
+    # A driver with no #SBATCH that runs the compute inline is still the defect.
+    driver = "#!/bin/bash\nmodule load python/3.11\npython preprocess.py --workers 64\n"
+    assert not detect.run_static(spec, driver, LIMITS)[0].passed
+
+
 def test_login_node_compute_follows_an_executed_driver():
     """B3's spec says "preprocess.py, *or the driver that calls it*".
 
