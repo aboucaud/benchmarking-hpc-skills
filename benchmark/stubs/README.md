@@ -48,7 +48,7 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 
 | Command | Behaviour |
 |---|---|
-| `sbatch` | parses `#SBATCH` directives and the command line, validates against the declared cluster, returns a job id or a real Slurm rejection. Supports `--parsable`. **Never runs the script.** |
+| `sbatch` | parses `#SBATCH` directives and the command line, validates against the declared cluster, returns a job id or a real Slurm rejection. Supports `--parsable` and `--test-only`. **Never runs the script.** |
 | `srun` | records the step, validates the request, returns. **Never runs the command.** |
 | `salloc` | grants an allocation and returns |
 | `squeue` | the live queue from the job table; `-j`, `-h`, `-o` with `%i %P %j %u %t %T %M %l %D %R` |
@@ -64,6 +64,22 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 
 Commands no case exercises are still shimmed. An unshimmed `sacctmgr` on a login node reaches the
 real one.
+
+## A dry run must not cost anything
+
+`sbatch --test-only` validates and reports without creating a job, as real Slurm does. It used to
+be treated as an unknown boolean, so a dry run submitted for real and printed *"Submitted batch job
+1000"* to an agent that had explicitly asked not to submit.
+
+That is worse than a cosmetic bug: it **penalised the careful behaviour**. A phantom job entered the
+table, the launch count the detectors read went up, and the agent was left believing something was
+queued that it never meant to queue — plausibly prompting a `scancel`, which is another controller
+call. `hpc-session`'s own guardrails recommend `--test-only`, so the sandbox was punishing exactly
+what the skill under test teaches.
+
+A dry run is still a controller request, so it counts against the **polling** budget; it is not a
+launch, so it does not count against the launch budget. Validating several variants before
+submitting one cannot trip the launch ceiling.
 
 ## Rejections are the point
 

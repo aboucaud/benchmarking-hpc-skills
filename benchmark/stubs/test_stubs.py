@@ -576,3 +576,30 @@ def test_mkdir_still_reports_a_genuine_local_failure(sandbox):
     result = sandbox.run("mkdir", "/nonexistent-root-xyz/child")
     assert result.returncode == 1
     assert "mkdir:" in result.stderr
+
+
+def test_test_only_validates_without_submitting(sandbox):
+    """The substrate must not punish validating before submitting.
+
+    `--test-only` was treated as an unknown boolean, so a dry run submitted for real and printed
+    "Submitted batch job 1000" to an agent that had explicitly asked not to submit. That put a
+    phantom job in the table, inflated the launch count the detectors read, and left the agent
+    believing something was queued. `hpc-session`'s own guardrails recommend `--test-only`, so the
+    sandbox was penalising exactly what the skill under test teaches.
+    """
+    result = sandbox.run("sbatch", "--test-only", "job.sh", script=batch())
+    assert result.returncode == 0, result.stderr
+    assert "to start at" in result.stdout
+    assert "Submitted batch job" not in result.stdout
+
+    state = json.loads((sandbox.runtime / "state.json").read_text())
+    assert state["jobs"] == {}, "a dry run must create no job"
+    assert sandbox.calls()[-1]["outcome"] == "validated"
+
+
+def test_test_only_still_reports_a_rejection(sandbox):
+    """Validation is the whole point: an illegal request must fail the dry run too."""
+    result = sandbox.run("sbatch", "--test-only", "job.sh", script=batch(time="48:00:00"))
+    assert result.returncode == 1
+    assert "Requested time limit is invalid" in result.stderr
+    assert json.loads((sandbox.runtime / "state.json").read_text())["jobs"] == {}

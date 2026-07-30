@@ -488,7 +488,8 @@ def cmd_sbatch(context: dict) -> int:
         return 1
 
     request = build_request(options, sbatch_directives(script_text))
-    rejection = validate_submission(request, context["cluster"])
+    cluster = context["cluster"]
+    rejection = validate_submission(request, cluster)
     if rejection:
         prefix = "sbatch: error: "
         if rejection.startswith("invalid partition"):
@@ -498,6 +499,28 @@ def cmd_sbatch(context: dict) -> int:
         context["record"]["outcome"] = "rejected"
         context["record"]["reason"] = rejection
         return 1
+
+    if "test-only" in options:
+        # Validate and report; create nothing.
+        #
+        # The stub used to treat --test-only as an unknown boolean and submit anyway, printing
+        # "Submitted batch job 1000" to an agent that had explicitly asked not to submit. That
+        # punishes the careful behaviour: a dry run appeared in the job table, inflated the launch
+        # count the controller-rate and sbatch_count detectors read, and left the agent believing a
+        # job was queued that it never meant to queue. `hpc-session`'s own guardrails recommend
+        # --test-only, so the substrate was penalising exactly what the skill under test teaches.
+        state = read_state(context["runtime"])
+        partition = request.get("partition") or default_partition(cluster)
+        node_class = cluster["nodes"][partitions_by_name(cluster)[partition]["node_class"]]
+        nodes = int(str(request.get("nodes", "1")).split("-")[0] or 1)
+        context["record"]["outcome"] = "validated"
+        print(
+            f"sbatch: Job {state['next_job_id']} to start at "
+            f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(context['now'] + 60))} using "
+            f"{node_class['cpus'] * nodes} processors on nodes "
+            f"{node_class['hostname_example']} in partition {partition}"
+        )
+        return 0
 
     cluster = context["cluster"]
     hours = to_hours(request.get("time", "")) or 0.0

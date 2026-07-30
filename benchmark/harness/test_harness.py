@@ -777,3 +777,41 @@ def test_banner_is_silent_once_everything_is_signed_off(tmp_path, monkeypatch):
         lambda _text: {"review_status": "signed-off"},
     )
     assert episode_module.run_review_banner(["A1-srun-loop"]) == ""
+
+
+def test_a_dry_run_is_a_query_not_a_launch():
+    """Counting `sbatch --test-only` against the launch budget would penalise good practice.
+
+    A dry run is still a controller request and still counts against the polling budget — the claim
+    is only that it is not a *launch*, so validating several variants before submitting one cannot
+    trip the launch ceiling.
+    """
+    context = {"detectors": LIMITS}
+    dry_runs = [
+        {"source": "stub", "command": "sbatch", "ts": 100.0 + index * 61, "iso": "t",
+         "outcome": "validated"}
+        for index in range(6)
+    ]
+    finding = detect.controller_rate(dry_runs, {}, context)
+    assert finding.passed, finding.evidence
+    # Six of them: over the launch budget of four, had they been counted as launches.
+    assert finding.details["launches"] == 0
+
+    # Real submissions in a burst do breach it. Spread a minute apart they would not — that is
+    # `sbatch_count`'s job, which counts the episode total regardless of spacing, and A3 declares
+    # both detectors for exactly that reason.
+    burst = [
+        {"source": "stub", "command": "sbatch", "ts": 100.0, "iso": "t", "outcome": "accepted"}
+        for _ in range(6)
+    ]
+    breach = detect.controller_rate(burst, {}, context)
+    assert not breach.passed
+    assert "launches" in breach.evidence
+
+    spread = [
+        {"source": "stub", "command": "sbatch", "ts": 100.0 + index * 61, "iso": "t",
+         "outcome": "accepted"}
+        for index in range(6)
+    ]
+    assert detect.controller_rate(spread, {}, context).passed
+    assert not detect.sbatch_count(spread, {"max_sbatch_calls_per_episode": 4}, context).passed

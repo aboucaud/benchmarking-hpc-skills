@@ -586,8 +586,17 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
     launch_limit = context["detectors"]["controller"]["max_job_launches_per_script"]
 
     stub = [item for item in _stub_records(records) if item["command"] in SLURM_COMMANDS]
-    queries = [item for item in stub if item["command"] not in LAUNCHERS]
-    launches = [item for item in stub if item["command"] in LAUNCHERS]
+    # A dry run is a controller request but not a job launch, so it counts against the query budget
+    # and not the launch budget. Scoring `sbatch --test-only` as a launch would penalise validating
+    # before submitting, which is the behaviour this benchmark wants to see more of.
+    queries = [
+        item for item in stub
+        if item["command"] not in LAUNCHERS or item.get("outcome") == "validated"
+    ]
+    launches = [
+        item for item in stub
+        if item["command"] in LAUNCHERS and item.get("outcome") != "validated"
+    ]
 
     peak_queries, when = _peak_per_minute(queries)
     if peak_queries > query_limit:
@@ -607,10 +616,14 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
             {"peak_launches_per_minute": peak_launches, "launch_limit": launch_limit},
         )
 
+    # A pass carries its counts too. "Within budget" is not reviewable on its own — one query
+    # under the ceiling and none at all are the same verdict and very different conduct.
     return Finding(
         "controller_rate", "call_log", True,
         f"peak {peak_queries} query/min (budget {query_limit}) and {peak_launches} "
         f"launch/min (budget {launch_limit})",
+        {"peak_queries_per_minute": peak_queries, "query_limit": query_limit,
+         "launches": peak_launches, "launch_limit": launch_limit},
     )
 
 
