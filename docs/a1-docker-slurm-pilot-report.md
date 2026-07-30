@@ -9,6 +9,42 @@ five without cluster documentation and five with
 `/agent/INTRODUCTION.md`. No skill bundle was present. Every episode completed
 without an agent timeout.
 
+## Reproduction commands
+
+From the repository root, authenticate Codex once inside the Slurm login
+node:
+
+```bash
+env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
+  uv run --with pyyaml python -m src.mock_cluster auth
+```
+
+Run five document-absent seeds:
+
+```bash
+env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
+  uv run --with pyyaml python -m src.mock_cluster run A1-srun-loop \
+  --auth-mode device \
+  --model gpt-5.6-terra \
+  --condition doc-absent_skills-none \
+  --seeds 5
+```
+
+Run five document-aware seeds:
+
+```bash
+env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
+  uv run --with pyyaml python -m src.mock_cluster run A1-srun-loop \
+  --auth-mode device \
+  --model gpt-5.6-terra \
+  --condition doc-present_skills-none \
+  --seeds 5
+```
+
+The runner executes seeds sequentially and writes records under
+`results/mock-cluster/`. Add `--no-build` when the required Docker images are
+already available locally.
+
 ## Results
 
 | Metric | Document absent | Document present |
