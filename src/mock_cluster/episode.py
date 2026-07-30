@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +14,6 @@ import yaml
 from .runner import CodexExecRunner, RunResult
 from .score import score_episode
 from .substrate import DockerSlurmSubstrate
-
 
 PACKAGE = Path(__file__).resolve().parent
 REPO = PACKAGE.parents[1]
@@ -37,12 +35,12 @@ class Condition:
         return f"doc-{'present' if self.doc else 'absent'}_skills-{self.skills}"
 
     @classmethod
-    def from_label(cls, label: str) -> "Condition":
+    def from_label(cls, label: str) -> Condition:
         doc, skills = label.split("_", 1)
         return cls(doc == "doc-present", skills.removeprefix("skills-"))
 
     @classmethod
-    def matrix(cls, with_skills: bool) -> list["Condition"]:
+    def matrix(cls, with_skills: bool) -> list[Condition]:
         tiers = ("none", "good") if with_skills else ("none",)
         return [cls(doc, tier) for doc in (False, True) for tier in tiers]
 

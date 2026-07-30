@@ -7,7 +7,6 @@ import yaml
 from .episode import CASES, GENERATED
 from .score import score_episode
 
-
 CASE_DIR = CASES / "A1-srun-loop"
 CASE = yaml.safe_load((CASE_DIR / "case.yaml").read_text())
 LIMITS = json.loads((GENERATED / "detectors.json").read_text())

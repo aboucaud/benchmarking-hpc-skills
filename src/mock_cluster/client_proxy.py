@@ -16,7 +16,6 @@ import socket
 import sys
 from pathlib import Path
 
-
 MAX_RESPONSE = 16 * 1024 * 1024
 ENV_EXACT = {
     "ARCHIVE",

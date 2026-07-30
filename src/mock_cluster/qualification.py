@@ -11,7 +11,6 @@ from typing import Any
 from .episode import CASES
 from .substrate import DockerSlurmSubstrate, SubstrateError
 
-
 FLOOR = b"""#!/bin/bash
 #SBATCH --job-name=observer-floor
 #SBATCH --account=proj_astro

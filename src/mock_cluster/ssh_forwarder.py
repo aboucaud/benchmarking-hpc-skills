@@ -8,7 +8,6 @@ import selectors
 import socket
 import socketserver
 
-
 UPSTREAM_HOST = os.environ.get("MOCK_CLUSTER_SSH_UPSTREAM", "login")
 UPSTREAM_PORT = 22
 LISTEN_PORT = 2222

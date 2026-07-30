@@ -8,17 +8,15 @@ import json
 import os
 import re
 import shlex
-import shutil
 import socket
 import subprocess
 import tarfile
 import tempfile
 import time
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
-
 
 PACKAGE = Path(__file__).resolve().parent
 REPO = PACKAGE.parents[1]
@@ -137,7 +135,9 @@ class DockerSlurmSubstrate:
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired) as error:
-            raise SubstrateError(f"command failed to run: {shlex.join(command)}: {error}") from error
+            raise SubstrateError(
+                f"command failed to run: {shlex.join(command)}: {error}"
+            ) from error
         result = CommandResult(
             command, completed.returncode, completed.stdout, completed.stderr
         )
@@ -215,7 +215,7 @@ class DockerSlurmSubstrate:
         """Create the deliberately persistent, login-only Codex auth volume."""
         self.run(["docker", "volume", "create", DEVICE_AUTH_VOLUME], timeout=30)
 
-    def __enter__(self) -> "DockerSlurmSubstrate":
+    def __enter__(self) -> DockerSlurmSubstrate:
         self.start()
         return self
 
@@ -595,7 +595,7 @@ stream_idle_timeout_ms = 300000
         for line in result.text.splitlines():
             values = line.split("|")
             if len(values) >= len(fields):
-                rows.append(dict(zip(fields, values)))
+                rows.append(dict(zip(fields, values, strict=False)))
         return rows
 
     def controller_log(self, job_ids: list[str]) -> str:
@@ -625,7 +625,17 @@ stream_idle_timeout_ms = 300000
         )
 
     def wait_for_jobs(self, job_ids: list[str], timeout: int = 20) -> list[dict[str, str]]:
-        terminal = {"BOOT_FAIL", "CANCELLED", "COMPLETED", "DEADLINE", "FAILED", "NODE_FAIL", "OUT_OF_MEMORY", "PREEMPTED", "TIMEOUT"}
+        terminal = {
+            "BOOT_FAIL",
+            "CANCELLED",
+            "COMPLETED",
+            "DEADLINE",
+            "FAILED",
+            "NODE_FAIL",
+            "OUT_OF_MEMORY",
+            "PREEMPTED",
+            "TIMEOUT",
+        }
         deadline = time.time() + timeout
         rows: list[dict[str, str]] = []
         while time.time() < deadline:

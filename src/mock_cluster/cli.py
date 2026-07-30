@@ -10,13 +10,12 @@ from pathlib import Path
 
 from .episode import (
     CASES,
+    REPO,
     Condition,
     DockerEpisode,
-    REPO,
 )
 from .qualification import qualify, write_report
 from .substrate import DockerSlurmSubstrate
-
 
 CONDITIONS = (
     "doc-absent_skills-none",
@@ -82,7 +81,6 @@ def run_episodes(arguments: argparse.Namespace) -> int:
         conditions = [Condition.from_label(arguments.condition)]
     else:
         conditions = [Condition()]
-    count = len(conditions) * arguments.seeds
     arguments.results.mkdir(parents=True, exist_ok=True)
     artifacts = arguments.results / "artifacts"
     artifacts.mkdir(parents=True, exist_ok=True)

@@ -21,7 +21,6 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
-
 MAX_BODY = 20 * 1024 * 1024
 SAFE_REQUEST_HEADERS = {
     "accept",
@@ -97,13 +96,12 @@ class State:
             "status": status,
             "duration_s": round(time.time() - started, 4),
             "ts": started,
-            "iso": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "iso": dt.datetime.now(dt.UTC).isoformat(),
         }
         line = json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
-        with self.lock:
-            with self.evidence.open("a", encoding="utf-8") as handle:
-                handle.write(line)
-                handle.flush()
+        with self.lock, self.evidence.open("a", encoding="utf-8") as handle:
+            handle.write(line)
+            handle.flush()
 
 
 STATE = State()

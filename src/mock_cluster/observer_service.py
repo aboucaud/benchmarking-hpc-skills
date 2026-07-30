@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import datetime as dt
 import hashlib
 import json
@@ -16,7 +17,6 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 SCHEMA_VERSION = 1
 ALLOWED_COMMANDS = {
@@ -67,7 +67,7 @@ JOB_ID = re.compile(r"(?:Submitted batch job\s+)?(\d+)")
 
 
 def utc_now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat()
+    return dt.datetime.now(dt.UTC).isoformat()
 
 
 def safe_cwd(value: str) -> str:
@@ -252,11 +252,9 @@ class Observer:
                     process.communicate(), timeout=self.timeout
                 )
                 exit_code = process.returncode
-            except asyncio.TimeoutError:
-                try:
+            except TimeoutError:
+                with contextlib.suppress(NameError, ProcessLookupError):
                     os.killpg(process.pid, signal.SIGKILL)
-                except (NameError, ProcessLookupError):
-                    pass
                 stdout, stderr, exit_code = b"", b"observer command timeout\n", 124
             except Exception as error:  # noqa: BLE001 - protocol returns bounded error
                 stdout, stderr, exit_code = b"", f"{error}\n".encode(), 111
