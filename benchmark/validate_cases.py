@@ -95,6 +95,34 @@ def check_reference_against_cluster(
     return problems
 
 
+def check_no_dangling_references(directory: Path, job: str) -> list[str]:
+    """Every script or program job.sh names must exist in assets/.
+
+    This started as a rule in the case README and was broken by three cases anyway, which is
+    the argument for checking it. It matters more now that the stubs exist: an agent running a
+    driver script gets a real interpreter error from a missing file, and then the episode
+    measures how it recovers from a broken case rather than whether it spotted the defect.
+    """
+    name = directory.name
+    assets = {path.name for path in (directory / "assets").iterdir()} if (
+        directory / "assets"
+    ).is_dir() else set()
+    # Only lines that do something count. A driver names itself in its header comment and
+    # `#SBATCH --output=` names a file the scheduler creates, and neither is a dependency.
+    code = "\n".join(
+        line for line in job.splitlines() if line.strip() and not line.lstrip().startswith("#")
+    )
+    referenced = set(re.findall(r"[A-Za-z0-9_-]+\.(?:py|sh|txt|csv|json|yaml)", code))
+    dangling = sorted(
+        item for item in referenced
+        if item not in assets and item not in {"job.sh", "reference.sh"}
+    )
+    return [
+        f"{name}: job.sh refers to {item!r} but assets/ does not provide it"
+        for item in dangling
+    ]
+
+
 def check_case(directory: Path, partitions: dict[str, dict], account: str,
                modules: set[str]) -> tuple[list[str], str]:
     name = directory.name
@@ -132,6 +160,8 @@ def check_case(directory: Path, partitions: dict[str, dict], account: str,
         for module in re.findall(r"module load (\S+)", text):
             if module not in modules:
                 problems.append(f"{name}: {label} loads undeclared module {module!r}")
+
+    problems += check_no_dangling_references(directory, job)
 
     if "$HOME" in reference:
         problems.append(f"{name}: reference.sh writes to $HOME")
