@@ -28,9 +28,6 @@ sinfo -N -o "%N CPUs=%c Memory=%m GRES=%G State=%t"
 scontrol show partition
 ```
 
-For deployment details, see the
-[mock-cluster documentation](../src/mock_cluster/README.md).
-
 ### File systems
 
 The login and compute nodes share disposable Docker volumes:
