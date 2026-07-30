@@ -390,14 +390,95 @@ def report(episodes: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def compare(baseline: list[dict], current: list[dict]) -> str:
+    """Cell-by-cell diff of two runs of the same protocol.
+
+    Built to answer one question honestly: **did fixing the substrate move the numbers?** The stub
+    layer was found telling agents that scratch was read-only, that a dry run had submitted, and
+    that `sinfo` had no GRES column — all after the five-seed run had been scored on it. A re-run
+    answers whether that mattered, but only if the comparison also says what movement seed variance
+    alone would produce.
+
+    So a cell that was already unstable across seeds is reported as **unattributable**: it moved,
+    and this comparison cannot say why. Six of eighteen cells were unstable in the first run, so
+    that is most of the grid, and pretending otherwise would turn noise into a finding about
+    fidelity.
+    """
+    def index(episodes: list[dict]) -> dict[tuple[str, str], list[dict]]:
+        grouped: dict[tuple[str, str], list[dict]] = defaultdict(list)
+        for episode in episodes:
+            grouped[(episode["case"], episode["condition"]["label"])].append(episode)
+        return grouped
+
+    before, after = index(baseline), index(current)
+    lines = ["# Run comparison", ""]
+    lines.append(f"baseline {len(baseline)} episodes · current {len(current)} episodes")
+    lines.append("")
+    lines.append("| Case | Condition | baseline | current | |")
+    lines.append("|---|---|---|---|---|")
+
+    moved, unattributable, steady = 0, 0, 0
+    for key in sorted(set(before) | set(after)):
+        case, condition = key
+        was = [episode for episode in before.get(key, []) if endpoint_of(episode) is not None]
+        now = [episode for episode in after.get(key, []) if endpoint_of(episode) is not None]
+        was_passed = sum(1 for episode in was if endpoint_of(episode))
+        now_passed = sum(1 for episode in now if endpoint_of(episode))
+        was_unstable = bool(was) and was_passed not in (0, len(was))
+
+        if not was or not now:
+            note = "only in one run"
+        elif was_passed == now_passed and len(was) == len(now):
+            note = ""
+            steady += 1
+        elif was_unstable:
+            note = "**moved, unattributable** — already unstable across seeds"
+            unattributable += 1
+        else:
+            note = "**moved** — was stable before"
+            moved += 1
+        lines.append(
+            f"| `{case}` | {condition} | {was_passed}/{len(was)} | {now_passed}/{len(now)} | "
+            f"{note} |"
+        )
+
+    lines += [
+        "",
+        f"{steady} cells unchanged · {moved} moved from a stable baseline · "
+        f"{unattributable} moved but were already unstable.",
+        "",
+    ]
+    if moved:
+        lines.append(
+            "A cell that was stable across five seeds and then moved is the only kind of movement "
+            "worth attributing to the change under test. Everything else is the variance already "
+            "measured."
+        )
+    else:
+        lines.append(
+            "**No stable cell moved.** On this evidence the change under test did not shift the "
+            "measurement, though the unstable cells cannot be ruled either way."
+        )
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("episodes", nargs="+", help="episodes*.jsonl, judged or not")
+    parser.add_argument("--baseline", default=None,
+                        help="another run of the same protocol; prints a cell-by-cell diff and "
+                             "marks movement that seed variance already explains")
     arguments = parser.parse_args()
 
     episodes = load(arguments.episodes)
     if not episodes:
         raise SystemExit("no episodes matched")
+    if arguments.baseline:
+        baseline = load([arguments.baseline])
+        if not baseline:
+            raise SystemExit(f"no episodes matched {arguments.baseline}")
+        print(compare(baseline, episodes))
+        print()
     print(report(episodes))
     return 0
 

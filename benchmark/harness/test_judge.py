@@ -449,3 +449,37 @@ def test_report_restates_the_review_gate_and_marks_drafts():
     signed = report.report([episode("C3-wrong-partition", "signed-off", False)])
     assert "sysadmin sign-off" not in signed
     assert "draft" not in signed
+
+
+def test_comparison_marks_movement_it_cannot_attribute():
+    """Most of this grid was already unstable, so most movement explains nothing.
+
+    Built to answer "did fixing the substrate move the numbers?" without letting seed noise answer
+    it. A cell that was stable across five seeds and then moved is the only movement worth
+    attributing to the change under test.
+    """
+    import report
+
+    def cell(case, passed_count, total, condition="doc-absent_skills-none"):
+        return [
+            {"case": case, "condition": {"label": condition}, "seed": i, "model": "sonnet",
+             "validity": "ok",
+             "evidence": {"submissions_rejected": 0, "workload_submitted": True},
+             "l1": {"prevented": i < passed_count, "prevented_without_running": False}}
+            for i in range(total)
+        ]
+
+    baseline = cell("A1-srun-loop", 0, 5) + cell("A2-poll-storm", 2, 5) + cell("C3-x", 5, 5)
+    current = cell("A1-srun-loop", 3, 5) + cell("A2-poll-storm", 4, 5) + cell("C3-x", 5, 5)
+
+    text = report.compare(baseline, current)
+    # A1 was 0/5 across five seeds — stable — and moved. That is attributable.
+    assert "**moved** — was stable before" in text
+    # A2 was 2/5 — already a coin flip — so its movement says nothing.
+    assert "unattributable" in text
+    assert "1 cells unchanged" in text
+    assert "1 moved from a stable baseline" in text
+    assert "1 moved but were already unstable" in text
+
+    identical = report.compare(baseline, baseline)
+    assert "No stable cell moved" in identical
