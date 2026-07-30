@@ -248,6 +248,56 @@ class ClaudeCodeRunner:
                 raise AssertionError(f"{isolated / name} would leak the operator's {name}")
         return isolated
 
+    @staticmethod
+    def credentials_reachable() -> tuple[bool, str]:
+        """Can an episode authenticate at all? Costs nothing, and answers before the run starts.
+
+        An afternoon was lost to the answer being no. The operator re-authenticated, which on
+        macOS wrote the credentials to the Keychain and DELETED `~/.claude/.credentials.json` —
+        the file `isolated_config` symlinks into every sandbox. So each episode got a config
+        directory with no credentials in it, reported "Not logged in", and was correctly
+        classified invalid. The harness said that once per episode instead of once, and said it
+        about the agent's environment rather than about the operator's.
+
+        The check is deliberately static. A live probe costs a model call and is done separately;
+        this one is free, deterministic, and catches the case that actually happened.
+        """
+        if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            return True, "ANTHROPIC_API_KEY is set; episodes will authenticate with it"
+
+        source = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+        credentials = source / ".credentials.json"
+        if credentials.exists():
+            return True, f"carrying {credentials}"
+
+        return False, (
+            f"no credentials an episode can use.\n"
+            f"  {credentials} does not exist, and ANTHROPIC_API_KEY is unset.\n"
+            f"  Each episode runs as a FRESH CLI session with an isolated config directory and a\n"
+            f"  sandbox HOME, so it cannot use a token this process is holding in memory, and on\n"
+            f"  macOS it cannot reach a Keychain entry either — re-authenticating moves the\n"
+            f"  credentials there and removes the file.\n"
+            f"  Fix: export ANTHROPIC_API_KEY before starting the run."
+        )
+
+    def preflight(self, work_root: Path) -> tuple[bool, str]:
+        """One live call under exactly the isolation episodes use. Cheap against a whole matrix.
+
+        Separate from the static check because they fail for different reasons: the static one
+        catches a missing credential, this one catches a credential that exists and is rejected —
+        revoked, expired, or pointed at a gateway that will not accept it.
+        """
+        probe = work_root / "preflight" / "work"
+        probe.mkdir(parents=True, exist_ok=True)
+        result = self.run(probe, "Reply with exactly: OK", {}, timeout_s=120)
+        cost = result.cost or {}
+        if cost.get("is_error") or result.error:
+            detail = (cost.get("result_text") or result.error or "")[:200]
+            return False, f"a nested session could not complete one trivial call: {detail}"
+        if not result.transcript:
+            return False, "a nested session produced no output at all"
+        return True, f"a nested session answered (${cost.get('usd') or 0:.3f})"
+
     def run(self, work: Path, prompt: str, env: dict[str, str], timeout_s: int) -> RunResult:
         if shutil.which(self.binary) is None:
             return RunResult(error=f"{self.binary} not found on PATH", exit_code=127)
