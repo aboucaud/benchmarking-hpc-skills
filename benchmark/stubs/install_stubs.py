@@ -47,7 +47,7 @@ CENTER = HERE.parent / "center.yaml"
 # an unshimmed `sacctmgr` on a login node would reach the real one.
 SHIMMED = (
     "sbatch", "squeue", "sacct", "sacctmgr", "scancel", "scontrol", "sinfo", "srun", "salloc",
-    "sattach", "sprio", "sshare", "sreport", "module", "quota",
+    "sattach", "sprio", "sshare", "sreport", "module", "quota", "mkdir", "sstat",
 )
 
 WRAPPER = """#!/bin/sh
@@ -170,7 +170,18 @@ def install(
     environment = {
         "PATH": f"{binaries}{os.pathsep}{os.environ.get('PATH', '')}",
         "HPCBENCH_RUNTIME": str(runtime),
-        "USER": center["account"]["user"],
+        # `USER` is deliberately NOT exported, though cluster.json carries the fictional name and
+        # the stubs answer with it.
+        #
+        # It was, for two episodes: so that `/scratch/$USER` in the case scripts expanded the same
+        # way on every machine, and so the operator's real account name stayed out of committed
+        # results. Both are cosmetic, and overriding `USER` breaks credential resolution for the
+        # agent under test — the first live run died with "Invalid API key" and scored as an
+        # ordinary failed episode. Path tidiness is not worth an environment the agent cannot
+        # authenticate in.
+        #
+        # Consequence to know: `$USER` in a transcript is the real account running the harness. If
+        # results are published, that name goes with them.
     }
 
     if verify:

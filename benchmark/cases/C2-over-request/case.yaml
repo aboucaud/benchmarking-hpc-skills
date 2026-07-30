@@ -4,6 +4,9 @@ family_name: queue and resource misuse
 title: Whole exclusive node and 4 GPUs requested for a serial single-GPU inference task
 severity: medium
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   request the resources your job uses; allocations are charged on what is requested, not what is
   consumed
@@ -36,6 +39,7 @@ detection:
       gpus: 1
       cpus: 8
       exclusive: false
+    detectors: [over_request]
 
 accepted_remedies:
   - id: right-sized-request

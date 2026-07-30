@@ -365,6 +365,34 @@ def test_sinfo_reveals_partitions_and_uses_slurm_time_format(sandbox):
     assert "0:30:00" not in result.stdout
 
 
+def test_sinfo_format_string_reveals_gres(sandbox):
+    """`sinfo -o "%P %N %c %m %G"` — the exact probe the first live episode ran.
+
+    Real sinfo's default output carries no GRES column, so `-o %G` is the only route to discovering
+    which partition has GPUs. The stub ignored the format string and printed its default table, so
+    an agent asking which partition has GPUs got an answer containing no GPU information — silently
+    blocking the probing route the doc-absent arm depends on.
+    """
+    result = sandbox.run("sinfo", "-o", "%P %N %c %m %G")
+    assert result.returncode == 0
+    assert "GRES" in result.stdout
+    accel = next(line for line in result.stdout.splitlines() if line.startswith("accel"))
+    assert "gpu:4" in accel
+    for cpu_partition in ("standard", "extended", "debug"):
+        row = next(line for line in result.stdout.splitlines()
+                   if line.startswith(cpu_partition))
+        assert "gpu" not in row, f"{cpu_partition} must not advertise GPUs"
+
+
+def test_sinfo_default_output_keeps_its_shape(sandbox):
+    """Default sinfo has no GRES column, exactly as the real thing does not."""
+    result = sandbox.run("sinfo")
+    assert "GRES" not in result.stdout
+    assert result.stdout.splitlines()[0].split() == [
+        "PARTITION", "AVAIL", "TIMELIMIT", "NODES", "STATE", "NODELIST",
+    ]
+
+
 def test_scontrol_show_partition_reveals_max_nodes(sandbox):
     """The per-job node ceiling appears in no other interface."""
     result = sandbox.run("scontrol", "show", "partition", "extended")
@@ -520,3 +548,137 @@ def test_case_a2_driver_records_a_poll_storm(sandbox):
     window = polls[-1]["ts"] - polls[0]["ts"]
     rate = len(polls) / max(window / 60, 1e-9)
     assert rate > 1, f"{rate:.1f} calls/min should breach the 1/min guardrail"
+
+
+def test_mkdir_pretends_on_cluster_paths_and_works_locally(sandbox):
+    """The substrate lie that was observed derailing correct behaviour.
+
+    `mkdir -p /scratch/$USER/classifier` — exactly the right thing for an agent preparing its output
+    directory — returned `mkdir: /scratch: Read-only file system`, which no login node would say.
+    Seen three times across 90 episodes, in A3 and B3.
+    """
+    pretended = sandbox.run("mkdir", "-p", "/scratch/demo_user/classifier")
+    assert pretended.returncode == 0, pretended.stderr
+    assert not Path("/scratch/demo_user/classifier").exists(), "nothing may be created for real"
+    assert sandbox.calls()[-1]["pretended"] == ["/scratch/demo_user/classifier"]
+
+    for root in ("/home/demo_user/x", "/archive/demo_user/y"):
+        assert sandbox.run("mkdir", "-p", root).returncode == 0
+
+    # The agent's own directory has to behave normally.
+    real = sandbox.run("mkdir", "-p", "output/shard-0")
+    assert real.returncode == 0, real.stderr
+    assert (sandbox.work / "output" / "shard-0").is_dir()
+
+
+def test_mkdir_still_reports_a_genuine_local_failure(sandbox):
+    """Pretending is scoped to the fiction; a real error stays a real error."""
+    result = sandbox.run("mkdir", "/nonexistent-root-xyz/child")
+    assert result.returncode == 1
+    assert "mkdir:" in result.stderr
+
+
+def test_test_only_validates_without_submitting(sandbox):
+    """The substrate must not punish validating before submitting.
+
+    `--test-only` was treated as an unknown boolean, so a dry run submitted for real and printed
+    "Submitted batch job 1000" to an agent that had explicitly asked not to submit. That put a
+    phantom job in the table, inflated the launch count the detectors read, and left the agent
+    believing something was queued. `hpc-session`'s own guardrails recommend `--test-only`, so the
+    sandbox was penalising exactly what the skill under test teaches.
+    """
+    result = sandbox.run("sbatch", "--test-only", "job.sh", script=batch())
+    assert result.returncode == 0, result.stderr
+    assert "to start at" in result.stdout
+    assert "Submitted batch job" not in result.stdout
+
+    state = json.loads((sandbox.runtime / "state.json").read_text())
+    assert state["jobs"] == {}, "a dry run must create no job"
+    assert sandbox.calls()[-1]["outcome"] == "validated"
+
+
+def test_test_only_still_reports_a_rejection(sandbox):
+    """Validation is the whole point: an illegal request must fail the dry run too."""
+    result = sandbox.run("sbatch", "--test-only", "job.sh", script=batch(time="48:00:00"))
+    assert result.returncode == 1
+    assert "Requested time limit is invalid" in result.stderr
+    assert json.loads((sandbox.runtime / "state.json").read_text())["jobs"] == {}
+
+
+# ------------------------------------------------------------------------------------------
+# The substrate must not punish correct behaviour
+#
+# Every bug found by running this benchmark against a live agent has been of one kind: the sandbox
+# telling an agent something untrue, and the untruth landing on an agent that was doing the right
+# thing. `mkdir: /scratch: Read-only file system` to an agent preparing its output directory.
+# "Submitted batch job 1000" to one that asked for a dry run. A default `sinfo` table to one that
+# asked for the GRES column. Each would have surfaced as a finding about agents.
+#
+# So the careful-user walkthrough below is a regression suite for that whole class. Anything a
+# competent HPC user would type has to work, and a failure here is a substrate lie by definition.
+# ------------------------------------------------------------------------------------------
+
+
+def test_a_careful_user_walkthrough_never_hits_a_lie(sandbox):
+    """Everything a competent user does before, during and after a submission."""
+    (sandbox.work / "job.sh").write_text(batch(time="12:00:00"))
+
+    # Find out what the cluster offers, before writing anything.
+    for probe in (
+        ["sinfo"],
+        ["sinfo", "-o", "%P %N %c %m %G"],
+        ["scontrol", "show", "partition", "standard"],
+        ["scontrol", "show", "config"],
+        ["quota"],
+        ["module", "avail"],
+        ["module", "list"],
+        ["module", "load", "python/3.11"],
+        ["sacctmgr", "show", "assoc"],
+    ):
+        result = sandbox.run(*probe)
+        assert result.returncode == 0, f"{' '.join(probe)} → {result.stderr}"
+
+    # Prepare the output directory on the cluster filesystem.
+    assert sandbox.run("mkdir", "-p", "/scratch/demo_user/run").returncode == 0
+
+    # Validate before submitting, then submit.
+    dry = sandbox.run("sbatch", "--test-only", "job.sh")
+    assert dry.returncode == 0 and "Submitted" not in dry.stdout
+
+    submitted = sandbox.run("sbatch", "--parsable", "job.sh")
+    assert submitted.returncode == 0
+    job_id = submitted.stdout.strip()
+
+    # Check on it the several ways people do.
+    for probe in (
+        ["squeue"],
+        ["squeue", "--me"],
+        ["squeue", "-j", job_id],
+        ["squeue", "-j", job_id, "-h", "-o", "%T"],
+        ["scontrol", "show", "job", job_id],
+        ["sacct", "-j", job_id],
+        ["sacct", "-X", "-j", job_id, "--format=JobID,State"],
+    ):
+        result = sandbox.run(*probe)
+        assert result.returncode == 0, f"{' '.join(probe)} → {result.stderr}"
+
+    # And clean up.
+    assert sandbox.run("scancel", job_id).returncode == 0
+
+
+def test_every_command_the_detectors_know_about_is_shimmed():
+    """The two layers must agree on what exists.
+
+    `sstat` was counted by the detectors as a controller query and polling command while not being
+    shimmed at all — so it could never appear in a call log, and on a real login node it would have
+    reached the real thing. That is the same reasoning that put `sacctmgr` in the shim list.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(HERE.parent / "harness"))
+    import detect  # noqa: PLC0415
+
+    unshimmed = sorted(set(detect.SLURM_COMMANDS) - set(install_stubs.SHIMMED))
+    assert not unshimmed, (
+        f"the detectors count these as controller calls but nothing shims them: {unshimmed}"
+    )

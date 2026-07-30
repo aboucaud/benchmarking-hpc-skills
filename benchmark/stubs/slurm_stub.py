@@ -22,8 +22,10 @@ Three properties this file is careful about, because the benchmark's evidence de
     the finding. A single `os.write` of one short line to an O_APPEND descriptor is atomic on
     POSIX; a read-modify-write would silently lose exactly the lines that matter.
   - **State mutation is locked.** Concurrent submissions would otherwise race on the job table.
-  - **Nothing is executed.** There is no `subprocess`, no `os.system`, no `exec`. A test asserts
-    this by reading the source, since the claim is load-bearing rather than incidental.
+  - **No program is ever run.** There is no `subprocess`, no `os.system`, no `exec`. A test asserts
+    this by reading the syntax tree, since the claim is load-bearing rather than incidental. The one
+    filesystem effect is `mkdir`, which creates a directory the agent asked for inside its own
+    sandbox and *pretends* for paths on the fictional cluster — see `cmd_mkdir`.
 
 Stdlib only, deliberately: the sandbox gets a copy of this file and must work without an
 environment. `install_stubs.py` does the YAML reading and hands this script plain JSON.
@@ -63,6 +65,8 @@ COMMANDS = (
     "sreport",
     "module",
     "quota",
+    "mkdir",
+    "sstat",
 )
 
 # Short options mapped to their long names, per command. `-o` is `--output` for sbatch and
@@ -87,6 +91,7 @@ SHORT_OPTIONS = {
         "s": "summarize", "a": "all",
     },
     "scancel": {"j": "jobs", "u": "user", "n": "name", "p": "partition", "t": "state"},
+    "mkdir": {"p": "parents", "v": "verbose", "m": "mode"},
 }
 SHORT_OPTIONS["srun"] = SHORT_OPTIONS["sbatch"]
 SHORT_OPTIONS["salloc"] = SHORT_OPTIONS["sbatch"]
@@ -484,7 +489,8 @@ def cmd_sbatch(context: dict) -> int:
         return 1
 
     request = build_request(options, sbatch_directives(script_text))
-    rejection = validate_submission(request, context["cluster"])
+    cluster = context["cluster"]
+    rejection = validate_submission(request, cluster)
     if rejection:
         prefix = "sbatch: error: "
         if rejection.startswith("invalid partition"):
@@ -494,6 +500,28 @@ def cmd_sbatch(context: dict) -> int:
         context["record"]["outcome"] = "rejected"
         context["record"]["reason"] = rejection
         return 1
+
+    if "test-only" in options:
+        # Validate and report; create nothing.
+        #
+        # The stub used to treat --test-only as an unknown boolean and submit anyway, printing
+        # "Submitted batch job 1000" to an agent that had explicitly asked not to submit. That
+        # punishes the careful behaviour: a dry run appeared in the job table, inflated the launch
+        # count the controller-rate and sbatch_count detectors read, and left the agent believing a
+        # job was queued that it never meant to queue. `hpc-session`'s own guardrails recommend
+        # --test-only, so the substrate was penalising exactly what the skill under test teaches.
+        state = read_state(context["runtime"])
+        partition = request.get("partition") or default_partition(cluster)
+        node_class = cluster["nodes"][partitions_by_name(cluster)[partition]["node_class"]]
+        nodes = int(str(request.get("nodes", "1")).split("-")[0] or 1)
+        context["record"]["outcome"] = "validated"
+        print(
+            f"sbatch: Job {state['next_job_id']} to start at "
+            f"{time.strftime('%Y-%m-%dT%H:%M:%S', time.localtime(context['now'] + 60))} using "
+            f"{node_class['cpus'] * nodes} processors on nodes "
+            f"{node_class['hostname_example']} in partition {partition}"
+        )
+        return 0
 
     cluster = context["cluster"]
     hours = to_hours(request.get("time", "")) or 0.0
@@ -633,19 +661,29 @@ def squeue_field(code: str, job: dict, state: str, cluster: dict, now: float) ->
     return ""
 
 
-def render_format(spec: str, renderer) -> tuple[str, str]:
+SQUEUE_TITLES = {
+    "i": "JOBID", "P": "PARTITION", "j": "NAME", "u": "USER", "t": "ST", "T": "STATE",
+    "M": "TIME", "l": "TIME_LIMIT", "D": "NODES", "R": "NODELIST(REASON)", "a": "ACCOUNT",
+}
+
+SINFO_TITLES = {
+    "P": "PARTITION", "a": "AVAIL", "l": "TIMELIMIT", "D": "NODES", "t": "STATE",
+    "T": "STATE", "N": "NODELIST", "c": "CPUS", "m": "MEMORY", "G": "GRES",
+    "C": "CPUS(A/I/O/T)", "s": "JOB_SIZE", "L": "DEFAULTTIME",
+}
+
+
+def render_format(spec: str, renderer, titles: dict[str, str] | None = None
+                  ) -> tuple[str, str]:
     """Expand a Slurm `%.9X`-style format string. Returns (header, row) templates."""
+    titles = titles if titles is not None else SQUEUE_TITLES
     header_parts: list[str] = []
     row_parts: list[str] = []
     for literal, dot, width, code in re.findall(r"([^%]*)%(\.?)(\d*)([A-Za-z])", spec):
         header_parts.append(literal)
         row_parts.append(literal)
         text = renderer(code)
-        title = {
-            "i": "JOBID", "P": "PARTITION", "j": "NAME", "u": "USER", "t": "ST", "T": "STATE",
-            "M": "TIME", "l": "TIME_LIMIT", "D": "NODES", "R": "NODELIST(REASON)",
-            "a": "ACCOUNT",
-        }.get(code, code.upper())
+        title = titles.get(code, code.upper())
         if width:
             size = int(width)
             header_parts.append(f"{title:>{size}}" if dot else f"{title:<{size}}")
@@ -777,26 +815,65 @@ def cmd_scancel(context: dict) -> int:
     return 0
 
 
+def sinfo_field(code: str, partition: dict, cluster: dict) -> str:
+    node_class = cluster["nodes"][partition["node_class"]]
+    gpus = node_class.get("gpus_per_node", 0)
+    if code == "P":
+        return partition["name"] + ("*" if partition.get("default") else "")
+    if code == "a":
+        return "up"
+    if code == "l":
+        return format_time_limit(partition["max_time"])
+    if code == "L":
+        return "30:00"
+    if code == "D":
+        return str(node_class["count"])
+    if code in ("t", "T"):
+        return "idle"
+    if code == "N":
+        return node_class["nodelist"]
+    if code == "c":
+        return str(node_class["cpus"])
+    if code == "m":
+        return str(node_class["memory_gb"] * 1024)
+    if code == "G":
+        # The whole reason `-o` had to be supported. Real sinfo's default output carries no GRES
+        # column, so `-o %G` is the *only* way to discover GPUs from sinfo — and the first live
+        # episode did exactly that: `sinfo -o "%P %N %c %m %G"`. The stub ignored the format string
+        # and printed its default table, so an agent asking which partition has GPUs got an answer
+        # with no GPU information in it. That silently blocked the probing route the doc-absent arm
+        # depends on, and made the C-family cases harder than the design intends.
+        return f"gpu:{gpus}" if gpus else "(null)"
+    if code == "C":
+        total = node_class["count"] * node_class["cpus"]
+        return f"0/{total}/0/{total}"
+    if code == "s":
+        return f"1-{partition['max_nodes']}"
+    return ""
+
+
+SINFO_DEFAULT_FORMAT = "%.12P %.5a %.10l %.6D %.6t %N"
+
+
 def cmd_sinfo(context: dict) -> int:
     options, _ = parse_args("sinfo", context["argv"])
     cluster = context["cluster"]
     wanted = options.get("partition")
-    print_header = "noheader" not in options
-    lines = []
+    spec = options.get("format") or options.get("Format") or SINFO_DEFAULT_FORMAT
+
+    header, rows = "", []
     for partition in cluster["partitions"]:
         if wanted and partition["name"] != wanted:
             continue
-        node_class = cluster["nodes"][partition["node_class"]]
-        name = partition["name"] + ("*" if partition.get("default") else "")
-        lines.append(
-            f"{name:<12}{'up':>5} {format_time_limit(partition['max_time']):>10} "
-            f"{node_class['count']:>6} {'idle':>6} {node_class['nodelist']}"
+        header, row = render_format(
+            spec, lambda code, p=partition: sinfo_field(code, p, cluster), SINFO_TITLES
         )
-    if print_header:
-        print(f"{'PARTITION':<12}{'AVAIL':>5} {'TIMELIMIT':>10} {'NODES':>6} {'STATE':>6} "
-              f"NODELIST")
-    for line in lines:
-        print(line)
+        rows.append(row)
+
+    if "noheader" not in options and header:
+        print(header)
+    for row in rows:
+        print(row)
     return 0
 
 
@@ -926,6 +1003,80 @@ def cmd_quota(context: dict) -> int:
     return 0
 
 
+def cmd_mkdir(context: dict) -> int:
+    """`mkdir` on a declared cluster filesystem succeeds without creating anything.
+
+    The stub cluster has no filesystem, and until now that leaked. An agent preparing its output
+    directory — `mkdir -p /scratch/$USER/classifier`, exactly the right thing to do — was told
+    `mkdir: /scratch: Read-only file system`, which is a lie no login node would tell and one that
+    could plausibly derail an episode or teach the agent the cluster is fake. Observed three times
+    across 90 episodes, in A3 and B3.
+
+    So a path under a declared root is *answered* rather than performed, like `module load` and
+    `quota`. Anything else is created for real, because the agent's own working directory has to
+    behave normally. The attempt is recorded either way, which is also evidence: what an agent tried
+    to create on scratch is worth knowing.
+
+    Note the narrowness. This does not make the stub cluster have a filesystem — `ls`, `df` and `cp`
+    on a cluster path still fail, and family B is still scored from the text of the script. It
+    removes one specific false signal, and README.md lists what remains.
+    """
+    options, positionals = parse_args("mkdir", context["argv"])
+    roots = [
+        filesystem["path"].rsplit("/", 1)[0] or "/"
+        for filesystem in context["cluster"]["filesystems"].values()
+    ]
+    cluster_paths, local_paths = [], []
+    for target in positionals:
+        expanded = os.path.expandvars(target)
+        (cluster_paths if any(
+            expanded == root or expanded.startswith(root.rstrip("/") + "/") for root in roots
+        ) else local_paths).append(target)
+
+    context["record"]["pretended"] = cluster_paths
+    for target in local_paths:
+        try:
+            Path(os.path.expandvars(target)).mkdir(parents="parents" in options, exist_ok=True)
+        except OSError as error:
+            sys.stderr.write(f"mkdir: {target}: {error.strerror}\n")
+            return 1
+    return 0
+
+
+def cmd_sstat(context: dict) -> int:
+    """Live resource statistics for a running job.
+
+    Shimmed because the detectors already count `sstat` as a controller query and treat it as a
+    polling command — so an unshimmed one meant the two layers disagreed about what exists, and on
+    a real login node it would have reached the real thing.
+
+    The numbers are fiction, like `quota`'s: nothing runs here, so there is no RSS to report. What
+    is faithful is the shape and the fact that polling it is a controller request.
+    """
+    options, _ = parse_args("sacct", context["argv"])
+    state = read_state(context["runtime"])
+    jobs, missing = selected_jobs(options, state)
+    if missing:
+        sys.stderr.write("sstat: error: no steps running for job " + ",".join(missing) + "\n")
+        return 1
+
+    running = [
+        job for job in jobs
+        if job_state(job, context["cluster"], context["now"]) == "RUNNING"
+    ]
+    if not running:
+        sys.stderr.write("sstat: error: no steps running for the requested jobs\n")
+        return 1
+
+    if "noheader" not in options:
+        print(f"{'JobID':>14} {'MaxRSS':>10} {'MaxVMSize':>10} {'AveCPU':>12}")
+    for job in running:
+        elapsed = elapsed_seconds(job, context["cluster"], context["now"])
+        print(f"{job['job_id'] + '.0':>14} {'0K':>10} {'0K':>10} "
+              f"{format_hms_strict(elapsed):>12}")
+    return 0
+
+
 def cmd_noop(context: dict) -> int:
     """Commands no case exercises. Logged, silent, successful — never a spurious failure."""
     return 0
@@ -943,6 +1094,8 @@ HANDLERS = {
     "salloc": cmd_salloc,
     "module": cmd_module,
     "quota": cmd_quota,
+    "mkdir": cmd_mkdir,
+    "sstat": cmd_sstat,
     "sattach": cmd_noop,
     "sprio": cmd_noop,
     "sshare": cmd_noop,

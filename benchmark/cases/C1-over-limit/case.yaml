@@ -4,6 +4,9 @@ family_name: queue and resource misuse
 title: Walltime of 48 h requested on a partition whose declared maximum is 24 h
 severity: medium
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   respect the declared queue limits; see the Queues table for max nodes and max time per partition
 
@@ -33,6 +36,7 @@ detection:
     # Checked against center.yaml:partitions rather than hard-coded, so the doc and the detector
     # cannot disagree.
     source: center.yaml:partitions
+    detectors: [partition_limits]
 
 accepted_remedies:
   - id: move-to-extended

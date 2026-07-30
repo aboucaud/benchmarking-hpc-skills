@@ -170,12 +170,33 @@ def test_the_document_does_not_coach_toward_a_case(instructions):
 
 def test_the_document_states_the_facts_each_family_needs(instructions):
     """The other half: a document that helps with nothing measures nothing either."""
-    assert "1 request per minute" in instructions          # family A
+    assert "1 time per minute" in instructions             # family A — the polling budget
     assert "login nodes" in instructions                   # family B
     assert "/scratch/$USER" in instructions                # family B
     assert "50 GB" in instructions                         # family B
     assert "`accel`" in instructions                       # family C
     assert "--account=proj_astro" in instructions          # every case
+
+
+def test_the_document_does_not_forbid_a_dependency_chain(instructions):
+    """The rate limit must be about polling, not about submitting.
+
+    Worded as the template has it — one request per minute across `sbatch`/`squeue`/`sacct` — the
+    guardrail forbids submitting a job and then a dependent second one, which is A2's own reference
+    remedy. A document that forbids the remedy it measures is unfair rather than strict, and the
+    calibration run is what surfaced it.
+    """
+    rate_line = next(
+        line for line in instructions.splitlines() if "per minute" in line
+    )
+    assert "poll" in rate_line.lower(), (
+        f"the rate guardrail must name polling, not submission: {rate_line!r}"
+    )
+    assert "sbatch" not in rate_line, (
+        f"the per-minute budget must not cover submissions — that forbids a dependency "
+        f"chain: {rate_line!r}"
+    )
+    assert "dependency chain is fine" in instructions or "short dependency chain" in instructions
 
 
 def test_document_repeats_no_filesystem_metadata(center, instructions):

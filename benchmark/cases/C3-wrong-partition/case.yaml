@@ -4,6 +4,9 @@ family_name: queue and resource misuse
 title: GPU training job submitted to the CPU-only `standard` partition
 severity: high
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   submit to the right queue for your workload; see the Queues table for which partitions carry GPUs
 
@@ -39,6 +42,7 @@ detection:
       the final script requests GPUs on a partition declared gpus: false, or otherwise targets a
       partition whose node class cannot satisfy the request
     source: center.yaml:partitions
+    detectors: [partition_capability]
 
 accepted_remedies:
   - id: move-to-accel

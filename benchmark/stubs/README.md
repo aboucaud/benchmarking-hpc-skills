@@ -48,7 +48,7 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 
 | Command | Behaviour |
 |---|---|
-| `sbatch` | parses `#SBATCH` directives and the command line, validates against the declared cluster, returns a job id or a real Slurm rejection. Supports `--parsable`. **Never runs the script.** |
+| `sbatch` | parses `#SBATCH` directives and the command line, validates against the declared cluster, returns a job id or a real Slurm rejection. Supports `--parsable` and `--test-only`. **Never runs the script.** |
 | `srun` | records the step, validates the request, returns. **Never runs the command.** |
 | `salloc` | grants an allocation and returns |
 | `squeue` | the live queue from the job table; `-j`, `-h`, `-o` with `%i %P %j %u %t %T %M %l %D %R` |
@@ -58,11 +58,48 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 | `sinfo` | the partition table |
 | `quota` | filesystem quotas and inode limits |
 | `module` | `avail`, `list`, `load` — `load` fails on a module the center does not declare |
+| `mkdir` | pretends for paths on the declared cluster filesystems, creates real directories elsewhere |
 | `sacctmgr` | `show`/`list` accounts |
+| `sstat` | live statistics for a running job; the numbers are fiction, the shape and the fact that polling it is a controller request are not |
 | `sattach` `sprio` `sshare` `sreport` | logged, silent, exit 0 |
 
 Commands no case exercises are still shimmed. An unshimmed `sacctmgr` on a login node reaches the
-real one.
+real one — and a test now asserts that every command the detectors count as a controller call has a
+shim, because `sstat` was counted and unshimmed for a while, which meant the two layers disagreed
+about what exists.
+
+### The substrate must not punish correct behaviour
+
+Every bug found by running this benchmark against a live agent has been of one kind: **the sandbox
+telling an agent something untrue, and the untruth landing on an agent that was doing the right
+thing.**
+
+- `mkdir: /scratch: Read-only file system` — to an agent preparing its output directory.
+- *"Submitted batch job 1000"* — to one that had asked for a dry run with `--test-only`.
+- A default `sinfo` table with no GRES column — to one that had asked for `%G`.
+- A `chmod` scored as executing the file it was making executable.
+
+Each would have surfaced as a finding about agents rather than a bug in the harness. So
+`test_a_careful_user_walkthrough_never_hits_a_lie` runs everything a competent HPC user would type —
+probe the cluster, prepare the output directory, validate, submit, check the several ways people
+check, cancel — and **a failure anywhere in it is a substrate lie by definition**. It is a
+regression suite for the whole class rather than for the four instances.
+
+## A dry run must not cost anything
+
+`sbatch --test-only` validates and reports without creating a job, as real Slurm does. It used to
+be treated as an unknown boolean, so a dry run submitted for real and printed *"Submitted batch job
+1000"* to an agent that had explicitly asked not to submit.
+
+That is worse than a cosmetic bug: it **penalised the careful behaviour**. A phantom job entered the
+table, the launch count the detectors read went up, and the agent was left believing something was
+queued that it never meant to queue — plausibly prompting a `scancel`, which is another controller
+call. `hpc-session`'s own guardrails recommend `--test-only`, so the sandbox was punishing exactly
+what the skill under test teaches.
+
+A dry run is still a controller request, so it counts against the **polling** budget; it is not a
+launch, so it does not count against the launch budget. Validating several variants before
+submitting one cannot trip the launch ceiling.
 
 ## Rejections are the point
 
@@ -151,6 +188,7 @@ Read these before trusting a number that came out of here.
 | **`module` is an executable, not a shell function.** Nothing is sourced. | `module load` reports whether a module exists but changes no environment. Enough for cases that turn on whether a module was requested at all. |
 | **No job arrays are expanded.** `--array=1-20` is recorded as one job, not twenty tasks. | A1's and A3's remedies are judged from the submission, which is the right level, but the stub cannot show an array actually fanning out. |
 | **No OOM, no failure, no exit codes other than success.** | The deferred under-request case, which needs a failure and a recovery cycle, is not yet supportable. Listed in the methodology as Phase 2. |
+| **The cluster has no filesystem.** `mkdir` on `/scratch/$USER` is answered rather than performed, but `ls`, `df`, `cp` and `rm` on a cluster path still fail. | An agent that inspects the filesystem gets errors a login node would not give. `mkdir` was shimmed because it was observed tripping up exactly the agents that were preparing their output directory correctly — `mkdir: /scratch: Read-only file system`, three times across 90 episodes, in A3 and B3. The rest are left alone rather than growing a fake filesystem by increments; measured filesystem effects are Phase 2. |
 | **Quota figures are fixed fiction** from `center.yaml:stub.usage`, not a running total. | `quota` answers consistently within an episode, but it will never show an agent filling a filesystem up. |
 
 ## Adding to the descriptor

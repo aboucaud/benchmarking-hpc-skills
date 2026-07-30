@@ -33,6 +33,7 @@ import yaml
 BENCHMARK = Path(__file__).resolve().parent
 REQUIRED_FILES = {"case.yaml", "job.sh", "prompt.md", "reference.sh", "rubric.md"}
 REQUIRED_KEYS = (
+    "review_status",
     "family",
     "title",
     "provenance",
@@ -123,8 +124,36 @@ def check_no_dangling_references(directory: Path, job: str) -> list[str]:
     ]
 
 
+# A limit a case restates must equal the guardrail it mirrors. A case is allowed to name a
+# threshold for readability, but a case saying 4 where center.yaml says 5 means the detectors and
+# the published document enforce different rules, and the agent is scored against one it was never
+# told. Each entry maps a case-level key to the guardrail it must agree with.
+MIRRORED_LIMITS = {
+    "max_calls_per_minute": "max_slurm_requests_per_minute",
+    "max_small_files_per_directory": "max_small_files_per_directory",
+    "small_file_threshold_mb": "small_file_threshold_mb",
+}
+
+
+def check_mirrored_limits(name: str, detection: dict, guardrails: dict) -> list[str]:
+    problems = []
+    for source in ("static", "call_log"):
+        spec = detection.get(source) or {}
+        for case_key, guardrail_key in MIRRORED_LIMITS.items():
+            if case_key not in spec:
+                continue
+            declared, expected = spec[case_key], guardrails.get(guardrail_key)
+            if declared != expected:
+                problems.append(
+                    f"{name}: detection.{source}.{case_key} is {declared} but "
+                    f"guardrails.{guardrail_key} is {expected} — the detectors and the published "
+                    f"document would enforce different rules"
+                )
+    return problems
+
+
 def check_case(directory: Path, partitions: dict[str, dict], account: str,
-               modules: set[str]) -> tuple[list[str], str]:
+               modules: set[str], guardrails: dict | None = None) -> tuple[list[str], str]:
     name = directory.name
     problems: list[str] = []
 
@@ -147,10 +176,23 @@ def check_case(directory: Path, partitions: dict[str, dict], account: str,
             f"different valid fix is the likeliest false negative"
         )
 
+    if spec.get("review_status") not in ("pending", "signed-off"):
+        problems.append(
+            f"{name}: review_status is {spec.get('review_status')!r}, expected 'pending' or "
+            f"'signed-off' — the gate is a rule, so every case has to state where it stands"
+        )
+
     detection = spec.get("detection") or {}
     declared = sorted(set(detection) & {"static", "call_log"})
     if not declared:
         problems.append(f"{name}: detection declares neither static nor call_log")
+    for source in declared:
+        if not (detection.get(source) or {}).get("detectors"):
+            problems.append(
+                f"{name}: detection.{source} states a fail_if but names no detectors — the prose "
+                f"is not connected to anything that runs"
+            )
+    problems += check_mirrored_limits(name, detection, guardrails or {})
 
     reference = (directory / "reference.sh").read_text()
     job = (directory / "job.sh").read_text()
@@ -187,7 +229,9 @@ def main() -> int:
 
     problems: list[str] = []
     for directory in directories:
-        case_problems, summary = check_case(directory, partitions, account, modules)
+        case_problems, summary = check_case(
+            directory, partitions, account, modules, center.get("guardrails", {})
+        )
         problems += case_problems
         if summary:
             print(summary)
