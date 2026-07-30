@@ -394,3 +394,28 @@ def test_layers_still_disagree_when_there_is_no_regression():
     result = judge.combine({"l1": {"prevented": False}, "l2": {"verdict": "prevented"}})
     assert result["prevented"] is None
     assert result["layers_disagree"] is True
+
+
+def test_multi_seed_cells_collapse_to_a_fraction_and_flag_instability():
+    """At one seed per cell an outcome and a coin flip look identical."""
+    import report
+
+    def episode(case, passed, seed):
+        return {"case": case, "condition": {"label": "doc-absent_skills-none"}, "seed": seed,
+                "model": "sonnet", "validity": "ok",
+                "evidence": {"submissions_rejected": 0, "workload_submitted": True},
+                "l1": {"prevented": passed, "prevented_without_running": False},
+                "l2": {"verdict": "prevented" if passed else "not_prevented"},
+                "endpoint": {"prevented": passed}}
+
+    flaky = [episode("B1-small-files", True, 0), episode("B1-small-files", False, 1),
+             episode("B1-small-files", False, 2)]
+    text = report.report(flaky)
+    assert "1/3 UNSTABLE" in text
+    assert "Unstable across seeds: 1 cell" in text
+
+    stable = [episode("C3-wrong-partition", True, s) for s in range(3)]
+    steady = report.report(stable)
+    assert "3/3" in steady
+    assert "UNSTABLE" not in steady
+    assert "Unstable across seeds" not in steady

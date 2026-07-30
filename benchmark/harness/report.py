@@ -58,9 +58,30 @@ def endpoint_of(episode: dict) -> bool | None:
     return (episode.get("l1") or {}).get("prevented")
 
 
-def cell(episode: dict) -> str:
-    value = endpoint_of(episode)
-    text = SYMBOLS[value] if value in SYMBOLS else str(value)
+def summarize_cell(group: list[dict]) -> str:
+    """One cell, however many seeds it holds.
+
+    With several seeds the useful thing is `k/n` plus whether the cell was stable, not a comma-run
+    of verdicts. At one seed per cell an outcome and a coin flip look identical, which is the whole
+    reason for running more than one.
+    """
+    if not group:
+        return " -- "
+    if len(group) == 1:
+        return cell(group[0])
+
+    scored = [episode for episode in group if endpoint_of(episode) is not None]
+    passed = sum(1 for episode in scored if endpoint_of(episode))
+    text = f"{passed}/{len(scored)}" if scored else "0/0"
+    if len(scored) < len(group):
+        text += f" ({len(group) - len(scored)} n/s)"
+    if scored and passed not in (0, len(scored)):
+        text += " UNSTABLE"
+    marks = sorted({mark for episode in group for mark in cell_marks(episode)})
+    return text + (f" [{','.join(marks)}]" if marks else "")
+
+
+def cell_marks(episode: dict) -> list[str]:
     marks = []
     if (episode.get("endpoint") or {}).get("fixed_by_accident"):
         marks.append("acc")
@@ -76,6 +97,13 @@ def cell(episode: dict) -> str:
         marks.append("part")
     if (episode.get("l2") or {}).get("verdict") == "needs_review":
         marks.append("rev")
+    return marks
+
+
+def cell(episode: dict) -> str:
+    value = endpoint_of(episode)
+    text = SYMBOLS[value] if value in SYMBOLS else str(value)
+    marks = cell_marks(episode)
     return text + (f"({','.join(marks)})" if marks else "")
 
 
@@ -130,8 +158,7 @@ def report(episodes: list[dict]) -> str:
     for case in sorted(grid):
         cells = []
         for label in conditions:
-            group = grid[case].get(label, [])
-            cells.append(",".join(cell(episode) for episode in group) or " -- ")
+            cells.append(summarize_cell(grid[case].get(label, [])))
         lines.append(f"| `{case:22s}` | " + " | ".join(f"{text:26s}" for text in cells) + " |")
     lines.append("")
     lines.append(
@@ -139,6 +166,29 @@ def report(episodes: list[dict]) -> str:
         "`norun` = nothing submitted · `part` = run ended abnormally · `rev` = needs human review"
     )
     lines.append("")
+
+    # ---- instability ----------------------------------------------------------------------
+    unstable = []
+    for case in sorted(grid):
+        for label in conditions:
+            group = grid[case].get(label, [])
+            scored = [episode for episode in group if endpoint_of(episode) is not None]
+            if len(scored) > 1:
+                passed = sum(1 for episode in scored if endpoint_of(episode))
+                if passed not in (0, len(scored)):
+                    unstable.append((case, label, passed, len(scored)))
+    if unstable:
+        lines.append(f"## Unstable across seeds: {len(unstable)} cell(s)")
+        lines.append("")
+        lines.append(
+            "Same case, same condition, different outcome. At one seed per cell these are "
+            "indistinguishable from findings, which is why a single-seed grid should not be read "
+            "as one: a cell that flips is evidence about variance, not about the intervention."
+        )
+        lines.append("")
+        for case, label, passed, total in unstable:
+            lines.append(f"- `{case}` {label} — {passed}/{total}")
+        lines.append("")
 
     # ---- what was excluded ----------------------------------------------------------------
     excluded = [episode for episode in episodes if episode.get("validity") == "invalid"]
