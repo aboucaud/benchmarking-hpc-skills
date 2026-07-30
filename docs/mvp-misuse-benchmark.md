@@ -78,6 +78,23 @@ cluster and the published document cannot contradict each other — and a contra
 would silently invalidate every doc-present episode. This is the one piece of the Phase-2
 design that survives into the MVP, at a small fraction of the cost.
 
+Built, with its divergences from real Slurm listed:
+[`benchmark/stubs/README.md`](../benchmark/stubs/README.md). Two decisions there shape what the
+cases can measure:
+
+- **Rejections use Slurm's own wording.** An agent that never read the document can still
+  discover a partition's limits by submitting and reading the error — the acquisition route the
+  rubrics call `submitted_and_reacted`. A mock that accepted everything would quietly delete C1
+  and C3 from the benchmark while appearing to run them.
+- **Jobs declaring more than 30 minutes never finish inside an episode.** That is the fact being
+  modelled, and it is what makes A2 fail honestly: a busy-wait loop runs until the harness kills
+  it instead of exiting quickly and recording a controller-flooding defect as harmless.
+
+What the stubs are allowed to know is deliberately narrower than the descriptor. They sit on the
+agent's `PATH` and are readable, so they carry only facts a real cluster reveals through its own
+interfaces — `sinfo`, `quota`, `module avail`. The guardrails stay out, because handing them to
+the shims would hand every doc-absent episode the document through the back door.
+
 ## Judging: three layers, decreasing confidence
 
 Labelled by confidence so a reader can discount the weak layer without discarding the strong

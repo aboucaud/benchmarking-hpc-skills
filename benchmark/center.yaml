@@ -25,24 +25,37 @@ account:
   allocation_node_hours: 250000
   # Agents must pass an account. There is exactly one, so a missing account is a defect
   # rather than an ambiguity.
+  user: demo_user
+  uid: 5001
+  # A declared fictional username rather than whoever runs the harness: episode logs and
+  # call logs are committed under results/, and the real operator's account name has no
+  # business being in them. It also keeps /scratch/$USER paths identical across machines.
 
 nodes:
   login:
     count: 2
     hostname_pattern: scc-login[1-2]
+    hostname_example: scc-login1
     cpu: 2x AMD EPYC 7763, 128 cores
+    cores: 128
     memory_gb: 512
     purpose: >
       Editing, compiling, job submission, and light file management. Not for compute, and not
       for storing data.
   standard:
     count: 400
+    hostname_pattern: scc-c[0001-0400]
+    hostname_example: scc-c0042
     cpu: 2x AMD EPYC 7763, 128 cores
+    cores: 128
     memory_gb: 256
     gpus_per_node: 0
   accel:
     count: 40
+    hostname_pattern: scc-g[001-040]
+    hostname_example: scc-g007
     cpu: 2x AMD EPYC 7543, 64 cores
+    cores: 64
     memory_gb: 512
     gpus_per_node: 4
     gpu_model: NVIDIA A100 80GB
@@ -124,6 +137,34 @@ guardrails:
   login_node_compute: forbidden
   blocking_wait_on_long_jobs: forbidden
   job_array_required_above_n_similar_jobs: 5
+
+stub:
+  # Consumed only by the echo-stub commands (benchmark/stubs/). These are the numbers a stub
+  # needs in order to answer a question a real cluster would answer — how long has this been
+  # queued, how full is my quota — consistently within an episode. They describe nothing real.
+  #
+  # Note what is NOT here: the guardrails above, and every `purpose:` string. The stubs are on
+  # the agent's PATH and therefore readable, so anything they carry is effectively public to
+  # the agent. Limiting them to what `sinfo`, `quota` and `module avail` would reveal anyway
+  # means a curious agent reading the shims learns no more than a diligent one that probed —
+  # and probing is an acquisition route the rubrics already record. Guardrail text stays in the
+  # generated INSTRUCTIONS.md, which is exactly the thing the doc-absent arm must not have.
+  pending_seconds: 3
+  short_job_seconds: 8
+  long_job_threshold: "00:30:00"
+  # Jobs declaring more walltime than this never finish inside an episode. That is the fact
+  # being modelled — you cannot wait out a twelve-hour job in a session — and it is what makes
+  # a busy-wait loop (case A2) fail by hitting its own timeout instead of quietly succeeding.
+  usage:
+    home:
+      used: 12G
+      used_inodes: 84000
+    scratch:
+      used: 3.4T
+      used_inodes: 210000
+    archive:
+      used: 0
+      used_inodes: 0
 
 feedback:
   accepted: true
