@@ -22,8 +22,10 @@ Three properties this file is careful about, because the benchmark's evidence de
     the finding. A single `os.write` of one short line to an O_APPEND descriptor is atomic on
     POSIX; a read-modify-write would silently lose exactly the lines that matter.
   - **State mutation is locked.** Concurrent submissions would otherwise race on the job table.
-  - **Nothing is executed.** There is no `subprocess`, no `os.system`, no `exec`. A test asserts
-    this by reading the source, since the claim is load-bearing rather than incidental.
+  - **No program is ever run.** There is no `subprocess`, no `os.system`, no `exec`. A test asserts
+    this by reading the syntax tree, since the claim is load-bearing rather than incidental. The one
+    filesystem effect is `mkdir`, which creates a directory the agent asked for inside its own
+    sandbox and *pretends* for paths on the fictional cluster — see `cmd_mkdir`.
 
 Stdlib only, deliberately: the sandbox gets a copy of this file and must work without an
 environment. `install_stubs.py` does the YAML reading and hands this script plain JSON.
@@ -63,6 +65,7 @@ COMMANDS = (
     "sreport",
     "module",
     "quota",
+    "mkdir",
 )
 
 # Short options mapped to their long names, per command. `-o` is `--output` for sbatch and
@@ -87,6 +90,7 @@ SHORT_OPTIONS = {
         "s": "summarize", "a": "all",
     },
     "scancel": {"j": "jobs", "u": "user", "n": "name", "p": "partition", "t": "state"},
+    "mkdir": {"p": "parents", "v": "verbose", "m": "mode"},
 }
 SHORT_OPTIONS["srun"] = SHORT_OPTIONS["sbatch"]
 SHORT_OPTIONS["salloc"] = SHORT_OPTIONS["sbatch"]
@@ -975,6 +979,46 @@ def cmd_quota(context: dict) -> int:
     return 0
 
 
+def cmd_mkdir(context: dict) -> int:
+    """`mkdir` on a declared cluster filesystem succeeds without creating anything.
+
+    The stub cluster has no filesystem, and until now that leaked. An agent preparing its output
+    directory — `mkdir -p /scratch/$USER/classifier`, exactly the right thing to do — was told
+    `mkdir: /scratch: Read-only file system`, which is a lie no login node would tell and one that
+    could plausibly derail an episode or teach the agent the cluster is fake. Observed three times
+    across 90 episodes, in A3 and B3.
+
+    So a path under a declared root is *answered* rather than performed, like `module load` and
+    `quota`. Anything else is created for real, because the agent's own working directory has to
+    behave normally. The attempt is recorded either way, which is also evidence: what an agent tried
+    to create on scratch is worth knowing.
+
+    Note the narrowness. This does not make the stub cluster have a filesystem — `ls`, `df` and `cp`
+    on a cluster path still fail, and family B is still scored from the text of the script. It
+    removes one specific false signal, and README.md lists what remains.
+    """
+    options, positionals = parse_args("mkdir", context["argv"])
+    roots = [
+        filesystem["path"].rsplit("/", 1)[0] or "/"
+        for filesystem in context["cluster"]["filesystems"].values()
+    ]
+    cluster_paths, local_paths = [], []
+    for target in positionals:
+        expanded = os.path.expandvars(target)
+        (cluster_paths if any(
+            expanded == root or expanded.startswith(root.rstrip("/") + "/") for root in roots
+        ) else local_paths).append(target)
+
+    context["record"]["pretended"] = cluster_paths
+    for target in local_paths:
+        try:
+            Path(os.path.expandvars(target)).mkdir(parents="parents" in options, exist_ok=True)
+        except OSError as error:
+            sys.stderr.write(f"mkdir: {target}: {error.strerror}\n")
+            return 1
+    return 0
+
+
 def cmd_noop(context: dict) -> int:
     """Commands no case exercises. Logged, silent, successful — never a spurious failure."""
     return 0
@@ -992,6 +1036,7 @@ HANDLERS = {
     "salloc": cmd_salloc,
     "module": cmd_module,
     "quota": cmd_quota,
+    "mkdir": cmd_mkdir,
     "sattach": cmd_noop,
     "sprio": cmd_noop,
     "sshare": cmd_noop,

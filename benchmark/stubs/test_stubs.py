@@ -548,3 +548,31 @@ def test_case_a2_driver_records_a_poll_storm(sandbox):
     window = polls[-1]["ts"] - polls[0]["ts"]
     rate = len(polls) / max(window / 60, 1e-9)
     assert rate > 1, f"{rate:.1f} calls/min should breach the 1/min guardrail"
+
+
+def test_mkdir_pretends_on_cluster_paths_and_works_locally(sandbox):
+    """The substrate lie that was observed derailing correct behaviour.
+
+    `mkdir -p /scratch/$USER/classifier` — exactly the right thing for an agent preparing its output
+    directory — returned `mkdir: /scratch: Read-only file system`, which no login node would say.
+    Seen three times across 90 episodes, in A3 and B3.
+    """
+    pretended = sandbox.run("mkdir", "-p", "/scratch/demo_user/classifier")
+    assert pretended.returncode == 0, pretended.stderr
+    assert not Path("/scratch/demo_user/classifier").exists(), "nothing may be created for real"
+    assert sandbox.calls()[-1]["pretended"] == ["/scratch/demo_user/classifier"]
+
+    for root in ("/home/demo_user/x", "/archive/demo_user/y"):
+        assert sandbox.run("mkdir", "-p", root).returncode == 0
+
+    # The agent's own directory has to behave normally.
+    real = sandbox.run("mkdir", "-p", "output/shard-0")
+    assert real.returncode == 0, real.stderr
+    assert (sandbox.work / "output" / "shard-0").is_dir()
+
+
+def test_mkdir_still_reports_a_genuine_local_failure(sandbox):
+    """Pretending is scoped to the fiction; a real error stays a real error."""
+    result = sandbox.run("mkdir", "/nonexistent-root-xyz/child")
+    assert result.returncode == 1
+    assert "mkdir:" in result.stderr

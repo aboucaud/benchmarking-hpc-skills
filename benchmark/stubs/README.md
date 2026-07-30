@@ -58,6 +58,7 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 | `sinfo` | the partition table |
 | `quota` | filesystem quotas and inode limits |
 | `module` | `avail`, `list`, `load` — `load` fails on a module the center does not declare |
+| `mkdir` | pretends for paths on the declared cluster filesystems, creates real directories elsewhere |
 | `sacctmgr` | `show`/`list` accounts |
 | `sattach` `sprio` `sshare` `sreport` | logged, silent, exit 0 |
 
@@ -151,6 +152,7 @@ Read these before trusting a number that came out of here.
 | **`module` is an executable, not a shell function.** Nothing is sourced. | `module load` reports whether a module exists but changes no environment. Enough for cases that turn on whether a module was requested at all. |
 | **No job arrays are expanded.** `--array=1-20` is recorded as one job, not twenty tasks. | A1's and A3's remedies are judged from the submission, which is the right level, but the stub cannot show an array actually fanning out. |
 | **No OOM, no failure, no exit codes other than success.** | The deferred under-request case, which needs a failure and a recovery cycle, is not yet supportable. Listed in the methodology as Phase 2. |
+| **The cluster has no filesystem.** `mkdir` on `/scratch/$USER` is answered rather than performed, but `ls`, `df`, `cp` and `rm` on a cluster path still fail. | An agent that inspects the filesystem gets errors a login node would not give. `mkdir` was shimmed because it was observed tripping up exactly the agents that were preparing their output directory correctly — `mkdir: /scratch: Read-only file system`, three times across 90 episodes, in A3 and B3. The rest are left alone rather than growing a fake filesystem by increments; measured filesystem effects are Phase 2. |
 | **Quota figures are fixed fiction** from `center.yaml:stub.usage`, not a running total. | `quota` answers consistently within an episode, but it will never show an agent filling a filesystem up. |
 
 ## Adding to the descriptor
