@@ -692,3 +692,33 @@ def test_isolated_config_dir_is_created_outside_the_agents_directory(tmp_path):
     result = runner.run(work, "hi", {}, 5)
     assert result.exit_code == 127          # short-circuits before spawning
     assert not (work / "claude-config").exists()
+
+
+def test_isolated_config_carries_credentials_and_nothing_else(tmp_path, monkeypatch):
+    """Credentials in, preferences out — and an empty directory is not the answer.
+
+    A blank config directory breaks authentication outright: the credentials live there, so the
+    episode dies with "Invalid API key". Worse, the init event still reports a clean skill list
+    before auth fails, so the isolation looked verified when it had actually broken the run. That
+    cost a matrix. Check the final result, not the first event.
+    """
+    fake_home = tmp_path / "home-claude"
+    fake_home.mkdir()
+    (fake_home / ".credentials.json").write_text("{}")
+    (fake_home / "config.json").write_text("{}")
+    (fake_home / "settings.json").write_text('{"model": "opus"}')
+    (fake_home / "CLAUDE.md").write_text("operator's global instructions")
+    (fake_home / "skills").mkdir()
+    (fake_home / "plugins").mkdir()
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(fake_home))
+
+    work = tmp_path / "sandbox" / "work"
+    work.mkdir(parents=True)
+    isolated = runners.ClaudeCodeRunner.isolated_config(work)
+
+    present = sorted(path.name for path in isolated.iterdir())
+    assert present == [".credentials.json", "config.json"], present
+    for leak in runners.ClaudeCodeRunner.CONTAMINANTS:
+        assert not (isolated / leak).exists(), f"the episode would inherit {leak}"
+    # Symlinked, so no second copy of a credential file is written to disk.
+    assert (isolated / ".credentials.json").is_symlink()

@@ -155,8 +155,9 @@ class ClaudeCodeRunner:
     """Headless Claude Code, one episode per invocation.
 
     The stub shims are first on PATH and the deny list below closes the one route they cannot, so
-    the agent's only way to a scheduler is through the shims. It runs with an **empty config
-    directory**, which is what makes a condition a condition — see `run`.
+    the agent's only way to a scheduler is through the shims. It runs against an **isolated config
+    directory** carrying credentials and nothing else, which is what makes a condition a condition
+    — see `isolated_config`.
 
     `parse_stream_json` is tested against recorded fixtures rather than live runs, because that
     parser is where a silent failure would hide: a transcript whose Bash calls are not recovered
@@ -201,23 +202,52 @@ class ClaudeCodeRunner:
             *self.extra_args,
         ]
 
+    # Everything the episode must NOT inherit from whoever is running it. Each of these is a
+    # separate way for the operator's machine to leak into a measurement.
+    CONTAMINANTS = ("skills", "plugins", "settings.json", "settings.local.json", "CLAUDE.md",
+                    "agents", "commands")
+
+    # The minimum an episode needs to authenticate and start. Symlinked rather than copied, so no
+    # second copy of a credential file appears on disk.
+    CARRIED_OVER = (".credentials.json", "config.json")
+
+    @staticmethod
+    def isolated_config(work: Path) -> Path:
+        """A config directory holding credentials and nothing else.
+
+        Without isolation the operator's whole personal configuration loads into every episode.
+        The first live skills run reported fifty-odd skills available — `frontend-design`,
+        `wiki-update`, forty metabolomics skills — none of which the benchmark installed, plus nine
+        slash commands and the operator's global `CLAUDE.md`. The `skills-none` arm was never
+        skills-none, and the one skill under test was buried among dozens of irrelevant ones.
+
+        An *empty* directory is not the answer either, and finding that out cost a run: credentials
+        live in the config directory, so a blank one yields "Invalid API key · Please run /login".
+        Worse, the init event still reports a clean skill list before auth fails — so the isolation
+        looked verified when it had actually broken the episode. Check the final result, not the
+        first event.
+
+        So: credentials symlinked in, everything that could carry the operator's preferences left
+        out. Project-level skills in the sandbox's own `.claude/skills/` still load, because those
+        come from the working directory rather than from here.
+        """
+        isolated = work.parent / "claude-config"
+        isolated.mkdir(parents=True, exist_ok=True)
+        source = Path(os.environ.get("CLAUDE_CONFIG_DIR") or Path.home() / ".claude")
+        for name in ClaudeCodeRunner.CARRIED_OVER:
+            origin, target = source / name, isolated / name
+            if origin.exists() and not target.exists():
+                target.symlink_to(origin)
+        for name in ClaudeCodeRunner.CONTAMINANTS:
+            if (isolated / name).exists():
+                raise AssertionError(f"{isolated / name} would leak the operator's {name}")
+        return isolated
+
     def run(self, work: Path, prompt: str, env: dict[str, str], timeout_s: int) -> RunResult:
         if shutil.which(self.binary) is None:
             return RunResult(error=f"{self.binary} not found on PATH", exit_code=127)
 
-        # An empty config directory, so the episode inherits nothing from whoever is running it.
-        #
-        # Without this the operator's entire personal configuration loads into every episode. The
-        # first live skills run reported fifty-odd skills available — `frontend-design`,
-        # `wiki-update`, forty metabolomics skills — none of which the benchmark installed. The
-        # `skills-none` arm was never skills-none, and the one skill under test was buried among
-        # dozens of irrelevant ones, which is not a condition anybody meant to measure.
-        #
-        # Project-level skills in the sandbox's own `.claude/skills/` still load, because those come
-        # from the working directory rather than the config directory. Verified: under isolation the
-        # available set is exactly `['hpc-session']` in the skills arm and empty without it.
-        isolated_config = work.parent / "claude-config"
-        isolated_config.mkdir(parents=True, exist_ok=True)
+        isolated_config = self.isolated_config(work)
 
         started = time.time()
         try:
