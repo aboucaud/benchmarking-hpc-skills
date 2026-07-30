@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Lint + tests only. No live episodes or calibration runs here: they are heavy, and the
+      # floor/ceiling calibration bounds are already asserted inside test_harness.py. These are the
+      # same commands CLAUDE.md documents, so CI and the docs cannot drift.
+      - run: uv run --with pyyaml --with pytest pytest benchmark/stubs benchmark/harness benchmark/test_render.py -q
+      - run: uv run --with pyyaml benchmark/validate_cases.py
+      - run: uv run --with pyyaml benchmark/render.py check
+      - run: uv run --with ruff ruff check benchmark
