@@ -95,6 +95,21 @@ def test_the_generated_config_honours_every_invariant(center):
     assert render.drift(center, render.render_slurm_conf(center)) == []
 
 
+def test_complete_docker_config_uses_generated_scheduler_facts(center):
+    complete = render.render_docker_slurm_conf(center)
+
+    assert "ClusterName=scc" in complete
+    assert "SlurmdParameters=config_overrides" in complete
+    assert "EnforcePartLimits=YES" in complete
+    assert f"MaxArraySize={center['scheduler']['max_array_size']}" in complete
+    assert render.render_slurm_conf(center).strip() in complete
+    assert render.drift(center, complete) == []
+
+
+def test_mock_modules_follow_the_descriptor(center):
+    assert render.MOCK_MODULES.read_text().splitlines() == center["modules"]
+
+
 def test_drift_detects_a_real_mismatch(center):
     """Positive control — a checker that never fires proves nothing."""
     broken = render.render_slurm_conf(center).replace("MaxTime=1-00:00:00", "MaxTime=00:30:00")
@@ -261,10 +276,14 @@ def test_cross_validation_table_compares_per_node_class(center):
     """A job on `accel` cannot borrow the `standard` containers."""
     table = render.cross_validation_table(center, {"standard": 2, "accel": 1})
     assert "| `C2-over-request` | `accel` | 1 | 1 | yes |" in table
-    assert "B2-home-output" in table and "**no**" in table
+    assert "| `B2-home-output` | `standard` | 2 | 2 | yes |" in table
+    assert "**no**" not in table
 
-    generous = render.cross_validation_table(center, {"standard": 8, "accel": 1})
-    assert "**no**" not in generous, "with 8 standard nodes every case should fit"
+    undersized = render.cross_validation_table(center, {"standard": 1, "accel": 1})
+    assert (
+        "| `B2-home-output` | `standard` | 2 | 1 | "
+        "**no** — needs 2 on `standard` |"
+    ) in undersized
 
 
 def test_detector_poll_interval_follows_the_rate_limit(center, detectors):

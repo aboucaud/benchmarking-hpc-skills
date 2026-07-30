@@ -81,10 +81,10 @@ Slurm may advertise production-shaped CPUs and GPUs while Docker enforces the
 small physical limits. These are scheduler-behavior tests, not performance
 tests. Prefer advertised resources over rewriting case inputs.
 
-B2's eight-node request cannot fit the two-node CPU topology. Either normalize
-that fixture to two nodes or use a reviewed eight-to-two Docker adapter.
-Adapters are applied before the agent acts and record canonical/adapted hashes.
-A1 requires no CPU adapter.
+B2's node count is normalized from eight to two because its benchmark defect is
+the output filesystem, not topology selection. The same two-node fixture is
+used by stubs and Docker, so no hidden per-episode adapter is needed. A1
+requires no resource normalization.
 
 ### Cheap workload contract
 
@@ -118,6 +118,7 @@ Unsupported cases must be explicit; they cannot silently fall back to stubs.
 
 The login image contains a pinned Codex CLI. Codex runs as `demo_user` with:
 
+- `gpt-5.6-terra` as the default benchmark model, recorded per episode;
 - `/episode/work` containing only condition-visible files;
 - an ephemeral home and `CODEX_HOME`;
 - real local Slurm commands;
@@ -172,7 +173,9 @@ For each episode the harness:
 The remote command is equivalent to:
 
 ```bash
-codex exec --json --ephemeral --ignore-user-config --ignore-rules \
+codex exec --model "${CODEX_MODEL:-gpt-5.6-terra}" \
+  --json --ephemeral --ignore-user-config --ignore-rules \
+  --skip-git-repo-check \
   --cd /episode/work -
 ```
 
@@ -296,7 +299,6 @@ Each episode records:
 
 ## Open decisions
 
-- Normalize B2 to two nodes or retain a Docker-only topology adapter.
 - Implement the observer/proxy in a small compiled binary or Python.
 - Extend the base Compose file or use a fully resolved benchmark overlay.
 - Provide localhost configuration for skills that assume a remote

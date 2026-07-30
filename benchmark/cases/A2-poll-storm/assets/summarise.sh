@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=fit-one-fixture
+#SBATCH --job-name=summarise-fixture
 #SBATCH --account=proj_astro
 #SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --time=00:01:00
-#SBATCH --output=/scratch/%u/rv-sweep/fit-%j.out
+#SBATCH --output=/scratch/%u/lightcurve-fit/summary-%j.out
 set -euo pipefail
 
-printf 'fit fixture for R_V=%s\n' "${1:?R_V argument required}"
+echo "summary fixture complete"

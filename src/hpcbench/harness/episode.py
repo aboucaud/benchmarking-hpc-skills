@@ -742,9 +742,13 @@ def build_runner(name: str, model: str, case_id: str = "", max_turns: int = 40
     if name == "claude-code":
         return runner_module.ClaudeCodeRunner(model=model, max_turns=max_turns)
     if name == "scripted-asis":
-        # The floor: run the script exactly as handed over, changing nothing. Every case should
-        # fail, and a case that passes here is not a case.
-        return runner_module.ScriptedRunner(["bash job.sh || sbatch job.sh"])
+        # The floor: exercise the script exactly as handed over, changing nothing. Batch scripts
+        # must be submitted rather than executed as login-node shell scripts; otherwise the
+        # scheduler never gets the opportunity to reject cases such as C1 and C3.
+        case_dir = BENCHMARK / "cases" / case_id
+        job = (case_dir / "job.sh").read_text()
+        command = "sbatch job.sh" if "#SBATCH" in job else "bash job.sh"
+        return runner_module.ScriptedRunner([command])
     if name == "scripted-reference":
         return reference_runner(case_id)
     raise SystemExit(f"unknown runner: {name}")

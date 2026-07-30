@@ -7,7 +7,7 @@
 #SBATCH --job-name=nbody-snapshots
 #SBATCH --account=proj_astro
 #SBATCH --partition=standard
-#SBATCH --nodes=8
+#SBATCH --nodes=2
 #SBATCH --ntasks-per-node=128
 #SBATCH --time=18:00:00
 #SBATCH --output=/scratch/%u/nbody/slurm-%j.out

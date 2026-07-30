@@ -2,7 +2,7 @@ FROM rockylinux:9
 
 LABEL org.opencontainers.image.source="https://github.com/aboucaud/benchmarking-hpc-skills" \
       org.opencontainers.image.title="mock-slurm-cluster" \
-      org.opencontainers.image.description="Two-node Slurm cluster for local testing"
+      org.opencontainers.image.description="Laptop-sized Slurm cluster for benchmark testing"
 
 RUN set -eux \
     && dnf -y makecache \
@@ -14,7 +14,6 @@ RUN set -eux \
         gcc \
         gcc-c++ \
         git \
-        gnupg2 \
         hostname \
         http-parser-devel \
         hwloc \
@@ -28,21 +27,21 @@ RUN set -eux \
         mariadb-devel \
         munge \
         munge-devel \
+        nodejs \
+        npm \
         openssh-server \
         perl \
+        python3 \
         procps-ng \
         psmisc \
-        sudo \
         systemd-devel \
-        wget \
+        util-linux \
     && dnf clean all \
     && rm -rf /var/cache/dnf
 
 RUN set -eux \
-    && useradd --create-home --shell /bin/bash submitter \
-    && echo "submitter:submitter" | chpasswd \
-    && usermod --append --groups wheel submitter \
-    && echo "%wheel ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers \
+    && useradd --uid 5001 --create-home --shell /bin/bash demo_user \
+    && echo "demo_user:demo_user" | chpasswd \
     && ssh-keygen -A \
     && mkdir -p /run/sshd \
     && { \
@@ -52,31 +51,16 @@ RUN set -eux \
         echo "PermitRootLogin no"; \
     } > /etc/ssh/sshd_config.d/50-mock-slurm.conf
 
-COPY submitter.bashrc /home/submitter/.bashrc
-RUN chown submitter:submitter /home/submitter/.bashrc \
-    && chmod 0644 /home/submitter/.bashrc
-
-ARG GOSU_VERSION=1.17
-ARG TARGETARCH
-
-RUN set -eux \
-    && case "${TARGETARCH}" in \
-        amd64|arm64) gosu_arch="${TARGETARCH}" ;; \
-        *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac \
-    && wget -O /usr/local/bin/gosu \
-        "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${gosu_arch}" \
-    && wget -O /usr/local/bin/gosu.asc \
-        "https://github.com/tianon/gosu/releases/download/${GOSU_VERSION}/gosu-${gosu_arch}.asc" \
-    && export GNUPGHOME="$(mktemp -d)" \
-    && gpg --batch --keyserver hkps://keys.openpgp.org \
-        --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
-    && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
-    && rm -rf "${GNUPGHOME}" /usr/local/bin/gosu.asc \
-    && chmod 0755 /usr/local/bin/gosu \
-    && gosu nobody true
+COPY demo-user.bashrc /home/demo_user/.bashrc
+RUN chown demo_user:demo_user /home/demo_user/.bashrc \
+    && chmod 0644 /home/demo_user/.bashrc
 
 ARG SLURM_TAG=slurm-25-11-2-1
+ARG CODEX_VERSION=0.146.0
+ARG BUILD_JOBS=2
+
+RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
+    && npm cache clean --force
 
 RUN set -eux \
     && git clone --branch "${SLURM_TAG}" --single-branch --depth=1 \
@@ -88,7 +72,7 @@ RUN set -eux \
         --sysconfdir=/etc/slurm \
         --libdir=/usr/lib64 \
         --with-mysql_config=/usr/bin \
-    && make -j"$(nproc)" \
+    && make -j"${BUILD_JOBS}" \
     && make install \
     && install -D -m0644 etc/cgroup.conf.example /etc/slurm/cgroup.conf.example \
     && install -D -m0644 etc/slurm.conf.example /etc/slurm/slurm.conf.example \
@@ -103,9 +87,13 @@ RUN set -eux \
 
 RUN set -eux \
     && mkdir -p \
+        /archive/demo_user \
         /data \
+        /episode/work \
+        /etc/mock-slurm \
         /etc/slurm \
         /run/munge \
+        /scratch/demo_user \
         /var/lib/slurm \
         /var/lib/slurmd \
         /var/log/slurm \
@@ -114,7 +102,11 @@ RUN set -eux \
         /var/run/slurmdbd \
         /var/spool/slurmctld \
         /var/spool/slurmd \
-    && chown submitter:submitter /data \
+    && chown -R demo_user:demo_user \
+        /archive/demo_user \
+        /data \
+        /episode \
+        /scratch/demo_user \
     && chown -R munge:munge /run/munge \
     && chown -R slurm:slurm \
         /var/lib/slurm \
@@ -125,11 +117,16 @@ RUN set -eux \
     && /sbin/create-munge-key
 
 COPY slurm.conf /etc/slurm/slurm.conf
+COPY gres.conf /etc/slurm/gres.conf
 COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
 COPY cgroup.conf /etc/slurm/cgroup.conf
+COPY modules.txt /etc/mock-slurm/modules.txt
+COPY module /usr/local/bin/module
+COPY codex-benchmark /usr/local/bin/codex-benchmark
 
 RUN chown -R slurm:slurm /etc/slurm \
-    && chmod 0600 /etc/slurm/slurmdbd.conf
+    && chmod 0600 /etc/slurm/slurmdbd.conf \
+    && chmod 0755 /usr/local/bin/codex-benchmark /usr/local/bin/module
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod 0755 /usr/local/bin/docker-entrypoint.sh

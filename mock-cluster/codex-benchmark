@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
+EPISODE_WORK="${EPISODE_WORK:-/episode/work}"
+
+case "${CODEX_MODEL}" in
+    *[!A-Za-z0-9._-]*)
+        echo "Invalid CODEX_MODEL value: ${CODEX_MODEL}" >&2
+        exit 2
+        ;;
+esac
+
+exec codex exec \
+    --model "${CODEX_MODEL}" \
+    --json \
+    --ephemeral \
+    --ignore-user-config \
+    --ignore-rules \
+    --skip-git-repo-check \
+    --sandbox workspace-write \
+    --cd "${EPISODE_WORK}" \
+    -

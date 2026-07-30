@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+modules_file=/etc/mock-slurm/modules.txt
+action="${1:-list}"
+shift || true
+
+case "${action}" in
+    avail)
+        cat "${modules_file}"
+        ;;
+    load)
+        for requested in "$@"; do
+            if ! grep -Fqx "${requested}" "${modules_file}"; then
+                echo "module: ${requested}: not available" >&2
+                exit 1
+            fi
+        done
+        ;;
+    list|purge)
+        ;;
+    *)
+        echo "module: unsupported action: ${action}" >&2
+        exit 2
+        ;;
+esac

@@ -1,18 +1,13 @@
-#!/bin/bash
-# Clean by construction: this batch script contains no defect. The defect in case A2 lives in
-# the driver (run_campaign.sh), not here.
-#SBATCH --job-name=fit-catalogue
+#!/usr/bin/env bash
+#SBATCH --job-name=fit-catalogue-fixture
 #SBATCH --account=proj_astro
 #SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=64
-#SBATCH --time=06:00:00
-#SBATCH --output=/scratch/%u/lightcurve-fit/slurm-%j.out
+#SBATCH --time=00:01:00
+#SBATCH --output=/scratch/%u/lightcurve-fit/fit-%j.out
+set -euo pipefail
 
-module load python/3.11
-
-python fit_catalogue.py \
-    --input /scratch/"$USER"/lightcurve-fit/input/catalogue.parquet \
-    --output /scratch/"$USER"/lightcurve-fit/output \
-    --workers 64
+# Long enough to expose a one-second polling loop, but bounded for a laptop.
+sleep 5
+echo "catalogue fixture complete"
