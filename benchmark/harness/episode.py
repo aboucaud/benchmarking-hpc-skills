@@ -43,7 +43,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import re
 import shutil
 import sys
 import time
@@ -175,18 +174,18 @@ def submitted_scripts(records: list[dict]) -> list[str]:
     return names
 
 
-EXECUTION = re.compile(r"(?:^|[|&;]\s*)(?:bash|sh|zsh|source|\.)\s+(\S+\.sh)|(?:^|\s)\./(\S+\.sh)")
-
-
 def executed_scripts(records: list[dict]) -> list[str]:
-    """Scripts the agent ran itself, from transcript records."""
+    """Scripts the agent ran itself, from transcript records.
+
+    Shares `detect.executed_names`, so the harness and the detectors agree on what "executed"
+    means. They did not once, and a `chmod` counted as an execution.
+    """
     names: list[str] = []
     for record in records:
         if record.get("source") != "transcript":
             continue
-        for match in EXECUTION.finditer(record.get("command", "")):
-            name = match.group(1) or match.group(2)
-            if name and name not in names:
+        for name in detect.executed_names(record.get("command", "")):
+            if name not in names:
                 names.append(name)
     return names
 
@@ -216,6 +215,71 @@ def scoring_targets(work: Path, records: list[dict]) -> list[Path]:
         if primary.is_file():
             targets.append(primary)
     return targets
+
+
+def episode_validity(result: runner_module.RunResult, records: list[dict]) -> tuple[str, str]:
+    """How much of this episode can be believed? Returns (validity, reason).
+
+        "ok"       the agent ran and finished normally
+        "partial"  the agent did substantive work, then the run ended abnormally
+        "invalid"  no evidence the agent acted at all
+
+    The middle state was not in the first design and case B3 forced it. The agent identified the
+    login-node defect, wrote a batch script for the preprocessing step, rewrote the driver as a
+    dependency chain — and then the API refused mid-summary with a usage-policy error, reproducibly,
+    three runs out of three, on that case alone. Treating the episode as unusable discarded a
+    complete and correct repair that was sitting on disk.
+
+    So: L1 reads the final scripts, which are whole, and a partial episode is scored. L2 reads the
+    transcript, which is truncated, so partial episodes are reported apart from the headline and
+    flagged for a human. Throwing away good static evidence is as wrong as inventing it.
+
+    The most dangerous failure this harness can have, and the first live run walked straight into
+    it. The nested agent died on authentication before doing anything, and the episode scored
+    `static=fail, prevented=False` — indistinguishable from an agent that read the script, missed
+    the defect, and submitted it. A full matrix would have produced a clean-looking "0 of 36
+    prevented, the document makes no difference", which is not a weak result. It is a fabricated
+    one.
+
+    So an episode is only scoreable if there is evidence the agent ran, and an invalid episode is
+    excluded from every rate rather than counted as a failure. Under-reporting the denominator is
+    recoverable; a fabricated numerator is not.
+    """
+    cost = result.cost or {}
+    if not result.transcript:
+        return "invalid", "no transcript — the agent produced no output at all"
+
+    # "Used at least one tool" rather than "ran at least one command". An agent that edits the
+    # script and runs nothing is a valid episode — it is the inaction pattern the scoring now
+    # reports separately, and marking it invalid would discard the most interesting behaviour in
+    # the matrix.
+    tool_uses = sum(
+        1
+        for event in result.transcript
+        for block in ((event.get("message") or {}).get("content") or [])
+        if isinstance(block, dict) and block.get("type") == "tool_use"
+    ) + sum(
+        1 for event in result.transcript if event.get("type") in ("bash", "write")
+    )
+
+    took_a_turn = (
+        bool(result.commands)
+        or bool([item for item in records if item.get("source") == "stub"])
+        or tool_uses > 0
+    )
+    if not took_a_turn:
+        return "invalid", (
+            "no tool use, no commands and no stub calls — nothing indicates the agent acted"
+        )
+
+    # It acted. Whether it finished is a separate question.
+    if cost.get("is_error"):
+        return "partial", f"acted, then the agent errored: {cost.get('result_text', '')[:110]}"
+    if cost.get("result_subtype") == "error_max_turns":
+        return "partial", f"acted, then hit the turn ceiling after {cost.get('turns')} turns"
+    if result.error and not result.timed_out:
+        return "partial", f"acted, then the invocation failed: {result.error[:110]}"
+    return "ok", ""
 
 
 def read_call_log(runtime: Path) -> list[dict]:
@@ -256,6 +320,7 @@ def run_episode(
     timeout_s: int = 300,
     skills_path: Path | None = None,
     keep: bool = False,
+    artifacts_dir: Path | None = None,
 ) -> dict:
     case_dir = BENCHMARK / "cases" / case_id
     if not case_dir.is_dir():
@@ -276,6 +341,8 @@ def run_episode(
     result = runner.run(work, prompt, environment, timeout_s)
     append_transcript_records(runtime, result)
     records = read_call_log(runtime)
+    validity, reason = episode_validity(result, records)
+    valid = validity == "ok"
 
     targets = scoring_targets(work, records)
     static_findings = [
@@ -303,6 +370,11 @@ def run_episode(
         "timed_out": result.timed_out,
         "agent_exit_code": result.exit_code,
         "agent_error": result.error,
+        "cost": result.cost,
+        "model": getattr(runner, "model", None),
+        "validity": validity,
+        "valid": valid,
+        "invalid_reason": reason,
         "detector_limits_schema_version": limits.get("schema_version"),
         "evidence": {
             "scored_scripts": [str(path.relative_to(work)) for path in targets],
@@ -317,6 +389,21 @@ def run_episode(
             "stub_calls": sum(1 for item in records if item.get("source") == "stub"),
             "agent_commands": sum(1 for item in records if item.get("source") == "transcript"),
             "transcript_events": len(result.transcript),
+            # Did the work the user asked for actually get submitted?
+            #
+            # The first live matrix produced two episodes that scored `prevented` while running
+            # nothing at all: the agent edited the script and stopped. The defect was indeed
+            # averted, and the researcher got no science. Not recording this makes the benchmark
+            # gameable by inaction — the mirror image of the completion-only scoring this project
+            # exists to criticize. Reported alongside `prevented`, never folded into it.
+            "workload_submitted": bool(submitted_scripts(records)),
+            # Whether the scheduler pushed back, which turns out to explain most of the
+            # doc-absent results: the only two cases caught without the document were the two
+            # whose submission was rejected outright.
+            "submissions_rejected": sum(
+                1 for item in records
+                if item.get("command") == "sbatch" and item.get("outcome") == "rejected"
+            ),
         },
         "l1": {
             "static": {
@@ -329,15 +416,49 @@ def run_episode(
             },
         },
     }
+    # `None`, not `False`, when the episode is invalid. An episode where the agent never acted
+    # carries no information about whether the defect would have been caught, and a `False` here is
+    # what turns a broken run into a publishable-looking zero.
     episode["l1"]["prevented"] = (
-        episode["l1"]["static"]["verdict"] == "pass"
-        and episode["l1"]["call_log"]["verdict"] in ("pass", "not_applicable")
+        (
+            episode["l1"]["static"]["verdict"] == "pass"
+            and episode["l1"]["call_log"]["verdict"] in ("pass", "not_applicable")
+        )
+        if validity != "invalid" else None
     )
+    # Prevented, but nothing ran. A separate outcome, not a pass and not a failure: the defect was
+    # averted and the work was not done. An agent that reliably lands here has learned to refuse,
+    # not to fix.
+    episode["l1"]["prevented_without_running"] = bool(
+        episode["l1"]["prevented"] and not episode["evidence"]["workload_submitted"]
+    )
+
+    # The transcript, the call log and the final scripts are always persisted, independently of
+    # `keep`.
+    #
+    # They used to live in the sandbox and vanish with it, so the first live matrix discarded every
+    # transcript it produced — and the methodology promises that "the episode records carry
+    # everything the judge needs, so nothing has to be re-run". L2 and L3 read the transcript. A
+    # matrix run whose transcripts are gone has to be paid for twice.
+    #
+    # `keep` now controls only whether the disposable part — the sandbox — survives for inspection.
+    if artifacts_dir is not None:
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        stem = f"{case_id}__{condition.label}__seed{seed}"
+        (artifacts_dir / f"{stem}.transcript.json").write_text(
+            json.dumps(result.transcript, indent=1) + "\n"
+        )
+        (artifacts_dir / f"{stem}.calls.jsonl").write_text(
+            "".join(json.dumps(item, sort_keys=True) + "\n" for item in records)
+        )
+        (artifacts_dir / f"{stem}.scripts.json").write_text(
+            json.dumps(scripts, indent=1) + "\n"
+        )
+        episode["artifacts"] = stem
 
     if keep:
         episode["sandbox"] = str(sandbox)
         (root / "episode.json").write_text(json.dumps(episode, indent=2) + "\n")
-        (root / "transcript.json").write_text(json.dumps(result.transcript, indent=2) + "\n")
     else:
         shutil.rmtree(root, ignore_errors=True)
     return episode
@@ -367,11 +488,12 @@ def reference_runner(case_id: str) -> runner_module.ScriptedRunner:
     )
 
 
-def build_runner(name: str, model: str, case_id: str = "") -> runner_module.Runner:
+def build_runner(name: str, model: str, case_id: str = "", max_turns: int = 40
+                 ) -> runner_module.Runner:
     if name == "noop":
         return runner_module.NoopRunner()
     if name == "claude-code":
-        return runner_module.ClaudeCodeRunner(model=model)
+        return runner_module.ClaudeCodeRunner(model=model, max_turns=max_turns)
     if name == "scripted-asis":
         # The floor: run the script exactly as handed over, changing nothing. Every case should
         # fail, and a case that passes here is not a case.
@@ -387,6 +509,8 @@ def main() -> int:
     parser.add_argument("--runner", default="noop",
                         choices=("noop", "scripted-asis", "scripted-reference", "claude-code"))
     parser.add_argument("--model", default="sonnet")
+    parser.add_argument("--max-turns", type=int, default=40,
+                        help="cost ceiling per episode, not a quality setting")
     parser.add_argument("--matrix", action="store_true", help="run all four conditions")
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=300)
@@ -408,19 +532,37 @@ def main() -> int:
 
     episodes = []
     for case_id in cases:
-        runner = build_runner(arguments.runner, arguments.model, case_id)
+        runner = build_runner(arguments.runner, arguments.model, case_id, arguments.max_turns)
         for condition in conditions:
             for seed in range(arguments.seeds):
                 episode = run_episode(
                     case_id, condition, runner, seed=seed, timeout_s=arguments.timeout,
                     skills_path=arguments.skills, keep=arguments.keep,
+                    artifacts_dir=arguments.results / "artifacts",
                 )
                 episodes.append(episode)
+                cost = episode.get("cost") or {}
+                money = f" ${cost['usd']:.3f}" if cost.get("usd") else ""
+                if episode["validity"] == "invalid":
+                    print(
+                        f"  {case_id:24s} {condition.label:34s} seed{seed}  "
+                        f"INVALID — {episode['invalid_reason'][:70]}",
+                        flush=True,
+                    )
+                    continue
+                note = "  [PARTIAL]" if episode["validity"] == "partial" else ""
+                if episode["l1"]["prevented_without_running"]:
+                    note = "  [nothing submitted]"
+                elif episode["evidence"]["submissions_rejected"]:
+                    note = f"  [{episode['evidence']['submissions_rejected']} rejected]"
                 print(
                     f"  {case_id:24s} {condition.label:34s} seed{seed}  "
                     f"static={episode['l1']['static']['verdict']:12s} "
                     f"call_log={episode['l1']['call_log']['verdict']:14s} "
-                    f"prevented={episode['l1']['prevented']}"
+                    f"prevented={str(episode['l1']['prevented']):5s}{money}{note}",
+                    # Unbuffered: a long matrix run in the background showed nothing at all until
+                    # it finished, because print() block-buffers to a pipe.
+                    flush=True,
                 )
 
     arguments.results.mkdir(parents=True, exist_ok=True)
@@ -429,9 +571,57 @@ def main() -> int:
         for episode in episodes:
             handle.write(json.dumps(episode, sort_keys=True) + "\n")
 
-    prevented = sum(1 for episode in episodes if episode["l1"]["prevented"])
-    print(f"\n{prevented}/{len(episodes)} episodes prevented (L1 only — L2 and L3 are not "
+    valid = [episode for episode in episodes if episode["validity"] == "ok"]
+    partial = [episode for episode in episodes if episode["validity"] == "partial"]
+    invalid = [episode for episode in episodes if episode["validity"] == "invalid"]
+    spend = sum((episode.get("cost") or {}).get("usd") or 0 for episode in episodes)
+
+    print()
+    if invalid:
+        # Loud, and never folded into the rate. An invalid episode says nothing about whether the
+        # defect would have been caught, and counting it as a failure is how a broken run becomes a
+        # publishable-looking zero.
+        print(f"{len(invalid)}/{len(episodes)} episodes INVALID and excluded:")
+        for episode in invalid[:5]:
+            print(f"  - {episode['case']} {episode['condition']['label']}: "
+                  f"{episode['invalid_reason'][:90]}")
+        if len(invalid) > 5:
+            print(f"  ... and {len(invalid) - 5} more")
+    if partial:
+        # Scored, but reported apart from the headline: L1 read whole scripts, L2 would read a
+        # truncated transcript.
+        print(f"\n{len(partial)}/{len(episodes)} episodes PARTIAL — the agent acted, then the run "
+              f"ended abnormally. L1 is computable, L2 needs a human:")
+        for episode in partial[:5]:
+            print(f"  - {episode['case']} {episode['condition']['label']}: "
+                  f"prevented={episode['l1']['prevented']} — {episode['invalid_reason'][:80]}")
+    if not valid:
+        print("\nNo fully valid episodes. There is no headline here — fix the runs before reading "
+              "anything into this.")
+        print(f"written to {destination}")
+        return 1
+
+    prevented = sum(1 for episode in valid if episode["l1"]["prevented"])
+    inaction = sum(1 for episode in valid if episode["l1"]["prevented_without_running"])
+    print(f"\n{prevented}/{len(valid)} valid episodes prevented (L1 only — L2 and L3 are not "
           f"implemented yet, so this is not the headline)")
+    if inaction:
+        print(f"  of which {inaction} ran nothing at all: the defect was averted and the work was "
+              f"not done.\n  Not a pass and not a failure — an agent that reliably lands here has "
+              f"learned to refuse, not to fix.")
+
+    # The stratification that explains the doc-absent arm, so it is printed rather than left to be
+    # noticed later.
+    pushed, quiet = [], []
+    for episode in valid:
+        (pushed if episode["evidence"]["submissions_rejected"] else quiet).append(episode)
+    for label, group in (("scheduler pushed back", pushed), ("no pushback", quiet)):
+        if group:
+            caught = sum(1 for episode in group if episode["l1"]["prevented"])
+            print(f"  {label:22s}: {caught}/{len(group)} prevented")
+    if spend:
+        print(f"spend: ${spend:.3f} over {len(episodes)} episodes "
+              f"(${spend / len(episodes):.3f} each)")
     print(f"written to {destination}")
     return 0
 

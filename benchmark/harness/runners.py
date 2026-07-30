@@ -40,6 +40,14 @@ class RunResult:
     duration_s: float = 0.0
     timed_out: bool = False
     error: str = ""
+    cost: dict = field(default_factory=dict)
+    """What the episode cost: `usd`, `input_tokens`, `output_tokens`, `turns`.
+
+    Recorded per episode rather than summed at the end, because the interesting number is not the
+    total — it is whether the conditions cost differently. An intervention that doubles the token
+    bill to prevent one more case is a finding a center cares about, and it is invisible in an
+    aggregate.
+    """
 
     def as_call_log_records(self) -> list[dict]:
         """The agent's own commands, in the call-log schema, tagged `transcript`.
@@ -158,10 +166,20 @@ class ClaudeCodeRunner:
 
     name = "claude-code"
 
+    # Never reachable from an episode. The stub shims already intercept every Slurm command, so
+    # this is a backstop against the one thing the shims cannot cover: an agent deciding to reach
+    # a real machine. Mirrors the deny list in the repo's own .claude/settings.json.
+    DENIED = (
+        "Bash(ssh:*)", "Bash(scp:*)", "Bash(sftp:*)", "Bash(rsync:*)",
+        "Bash(curl:*)", "Bash(wget:*)", "Bash(git push:*)",
+        "WebFetch", "WebSearch",
+    )
+
     def __init__(self, model: str = "sonnet", binary: str = "claude",
-                 extra_args: list[str] | None = None):
+                 max_turns: int = 40, extra_args: list[str] | None = None):
         self.model = model
         self.binary = binary
+        self.max_turns = max_turns
         self.extra_args = extra_args or []
 
     def command_line(self, prompt: str) -> list[str]:
@@ -171,6 +189,13 @@ class ClaudeCodeRunner:
             "--output-format", "stream-json",
             "--verbose",
             "--allowedTools", "Bash,Read,Write,Edit,Glob,Grep",
+            "--disallowedTools", ",".join(self.DENIED),
+            # Headless with no way to answer a prompt: without this every Bash call blocks, and the
+            # episode would measure the permission dialog rather than the agent.
+            "--permission-mode", "bypassPermissions",
+            # A cost ceiling, not a quality setting. An agent that loops on a stub it does not
+            # understand would otherwise bill until the wall-clock timeout.
+            "--max-turns", str(self.max_turns),
             *self.extra_args,
         ]
 
@@ -187,11 +212,11 @@ class ClaudeCodeRunner:
         except subprocess.TimeoutExpired as expired:
             # A timeout is a result, not an error. Case A2's busy-wait is *supposed* to end here,
             # and the partial transcript still carries the conduct that got it there.
+            commands, transcript = parse_stream_json(expired.stdout or "")
             return RunResult(
-                commands=parse_stream_json(expired.stdout or "")[0],
-                transcript=parse_stream_json(expired.stdout or "")[1],
+                commands=commands, transcript=transcript,
                 timed_out=True, duration_s=round(time.time() - started, 3),
-                error=f"timed out after {timeout_s}s",
+                error=f"timed out after {timeout_s}s", cost=extract_cost(transcript),
             )
 
         commands, transcript = parse_stream_json(completed.stdout)
@@ -199,6 +224,7 @@ class ClaudeCodeRunner:
             commands=commands, transcript=transcript, exit_code=completed.returncode,
             duration_s=round(time.time() - started, 3),
             error=completed.stderr[-2000:] if completed.returncode else "",
+            cost=extract_cost(transcript),
         )
 
 
@@ -242,6 +268,34 @@ def parse_stream_json(output: str | bytes) -> tuple[list[dict], list[dict]]:
                 "tool_use_id": block.get("id", ""),
             })
     return commands, transcript
+
+
+def extract_cost(transcript: list[dict]) -> dict:
+    """What the episode billed, from the final `result` event.
+
+    Reported per episode because the comparison between conditions is the interesting part: if the
+    doc-present arm prevents one more case and costs twice as much, a center wants to know that
+    before adopting it. A total hides exactly that.
+    """
+    for event in reversed(transcript):
+        if event.get("type") != "result":
+            continue
+        usage = event.get("usage") or {}
+        return {
+            "usd": event.get("total_cost_usd"),
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "cache_read_tokens": usage.get("cache_read_input_tokens"),
+            "turns": event.get("num_turns"),
+            "api_duration_ms": event.get("duration_api_ms"),
+            "result_subtype": event.get("subtype"),
+            # `subtype` is not the success signal. The first live run returned
+            # {"subtype": "success", "is_error": true, "result": "Invalid API key"} — reading
+            # subtype alone reports a failed invocation as a completed episode.
+            "is_error": bool(event.get("is_error")),
+            "result_text": str(event.get("result", ""))[:300],
+        }
+    return {}
 
 
 def expand_shell_commands(commands: list[dict]) -> list[dict]:

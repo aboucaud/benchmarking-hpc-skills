@@ -69,6 +69,29 @@ class Finding:
 
 LAUNCHERS = ("srun", "sbatch", "salloc")
 
+# A script is "executed" only when a command actually invokes it — `bash x.sh`, `./x.sh`,
+# `source x.sh`. Not when a command merely names it.
+#
+# The first live B3 episode failed on exactly that distinction. The agent produced a correct
+# remedy — a batch script for the preprocessing step and a driver that submits it — and the
+# detector reported "executed preprocess.sh, which invokes the compute step directly". The command
+# it had seen was `chmod +x prepare_and_run.sh preprocess.sh train.sh`. Substring matching on a
+# command line turns `chmod`, `cat`, `cp` and `ls` into execution, and would have failed every
+# correct answer to this case.
+EXECUTION = re.compile(
+    r"(?:^|[|&;]\s*)(?:bash|sh|zsh|source|\.)\s+(\S+\.sh)|(?:^|\s)\./(\S+\.sh)"
+)
+
+
+def executed_names(text: str) -> list[str]:
+    """Script names a command line actually invokes."""
+    found: list[str] = []
+    for match in EXECUTION.finditer(text or ""):
+        name = match.group(1) or match.group(2)
+        if name:
+            found.append(name.lstrip("./"))
+    return found
+
 
 def strip_comments(text: str) -> str:
     """Drop comment lines, keeping `#SBATCH` directives, which are not comments in practice."""
@@ -625,8 +648,9 @@ def login_node_compute(records: list[dict], params: dict, context: dict) -> Find
                     {"command": text, "route": "direct"},
                 )
 
-        for name, body in scripts.items():
-            if name not in text:
+        for name in executed_names(text):
+            body = scripts.get(name)
+            if body is None:
                 continue
             unsubmitted = direct_invocation(body, params, context)
             if not unsubmitted.passed and not unsubmitted.details.get("needs_review"):

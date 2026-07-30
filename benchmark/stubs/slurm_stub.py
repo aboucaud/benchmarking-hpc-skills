@@ -633,19 +633,29 @@ def squeue_field(code: str, job: dict, state: str, cluster: dict, now: float) ->
     return ""
 
 
-def render_format(spec: str, renderer) -> tuple[str, str]:
+SQUEUE_TITLES = {
+    "i": "JOBID", "P": "PARTITION", "j": "NAME", "u": "USER", "t": "ST", "T": "STATE",
+    "M": "TIME", "l": "TIME_LIMIT", "D": "NODES", "R": "NODELIST(REASON)", "a": "ACCOUNT",
+}
+
+SINFO_TITLES = {
+    "P": "PARTITION", "a": "AVAIL", "l": "TIMELIMIT", "D": "NODES", "t": "STATE",
+    "T": "STATE", "N": "NODELIST", "c": "CPUS", "m": "MEMORY", "G": "GRES",
+    "C": "CPUS(A/I/O/T)", "s": "JOB_SIZE", "L": "DEFAULTTIME",
+}
+
+
+def render_format(spec: str, renderer, titles: dict[str, str] | None = None
+                  ) -> tuple[str, str]:
     """Expand a Slurm `%.9X`-style format string. Returns (header, row) templates."""
+    titles = titles if titles is not None else SQUEUE_TITLES
     header_parts: list[str] = []
     row_parts: list[str] = []
     for literal, dot, width, code in re.findall(r"([^%]*)%(\.?)(\d*)([A-Za-z])", spec):
         header_parts.append(literal)
         row_parts.append(literal)
         text = renderer(code)
-        title = {
-            "i": "JOBID", "P": "PARTITION", "j": "NAME", "u": "USER", "t": "ST", "T": "STATE",
-            "M": "TIME", "l": "TIME_LIMIT", "D": "NODES", "R": "NODELIST(REASON)",
-            "a": "ACCOUNT",
-        }.get(code, code.upper())
+        title = titles.get(code, code.upper())
         if width:
             size = int(width)
             header_parts.append(f"{title:>{size}}" if dot else f"{title:<{size}}")
@@ -777,26 +787,65 @@ def cmd_scancel(context: dict) -> int:
     return 0
 
 
+def sinfo_field(code: str, partition: dict, cluster: dict) -> str:
+    node_class = cluster["nodes"][partition["node_class"]]
+    gpus = node_class.get("gpus_per_node", 0)
+    if code == "P":
+        return partition["name"] + ("*" if partition.get("default") else "")
+    if code == "a":
+        return "up"
+    if code == "l":
+        return format_time_limit(partition["max_time"])
+    if code == "L":
+        return "30:00"
+    if code == "D":
+        return str(node_class["count"])
+    if code in ("t", "T"):
+        return "idle"
+    if code == "N":
+        return node_class["nodelist"]
+    if code == "c":
+        return str(node_class["cpus"])
+    if code == "m":
+        return str(node_class["memory_gb"] * 1024)
+    if code == "G":
+        # The whole reason `-o` had to be supported. Real sinfo's default output carries no GRES
+        # column, so `-o %G` is the *only* way to discover GPUs from sinfo — and the first live
+        # episode did exactly that: `sinfo -o "%P %N %c %m %G"`. The stub ignored the format string
+        # and printed its default table, so an agent asking which partition has GPUs got an answer
+        # with no GPU information in it. That silently blocked the probing route the doc-absent arm
+        # depends on, and made the C-family cases harder than the design intends.
+        return f"gpu:{gpus}" if gpus else "(null)"
+    if code == "C":
+        total = node_class["count"] * node_class["cpus"]
+        return f"0/{total}/0/{total}"
+    if code == "s":
+        return f"1-{partition['max_nodes']}"
+    return ""
+
+
+SINFO_DEFAULT_FORMAT = "%.12P %.5a %.10l %.6D %.6t %N"
+
+
 def cmd_sinfo(context: dict) -> int:
     options, _ = parse_args("sinfo", context["argv"])
     cluster = context["cluster"]
     wanted = options.get("partition")
-    print_header = "noheader" not in options
-    lines = []
+    spec = options.get("format") or options.get("Format") or SINFO_DEFAULT_FORMAT
+
+    header, rows = "", []
     for partition in cluster["partitions"]:
         if wanted and partition["name"] != wanted:
             continue
-        node_class = cluster["nodes"][partition["node_class"]]
-        name = partition["name"] + ("*" if partition.get("default") else "")
-        lines.append(
-            f"{name:<12}{'up':>5} {format_time_limit(partition['max_time']):>10} "
-            f"{node_class['count']:>6} {'idle':>6} {node_class['nodelist']}"
+        header, row = render_format(
+            spec, lambda code, p=partition: sinfo_field(code, p, cluster), SINFO_TITLES
         )
-    if print_header:
-        print(f"{'PARTITION':<12}{'AVAIL':>5} {'TIMELIMIT':>10} {'NODES':>6} {'STATE':>6} "
-              f"NODELIST")
-    for line in lines:
-        print(line)
+        rows.append(row)
+
+    if "noheader" not in options and header:
+        print(header)
+    for row in rows:
+        print(row)
     return 0
 
 

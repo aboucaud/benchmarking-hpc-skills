@@ -364,6 +364,39 @@ def test_compound_commands_are_split():
     ]
 
 
+def test_chmod_is_not_execution():
+    """The false positive that failed a correct B3 remedy.
+
+    The agent produced the right answer -- a batch script for the preprocessing step plus a driver
+    that submits it -- and the detector reported "executed preprocess.sh, which invokes the compute
+    step directly". The command it had seen was `chmod +x prepare_and_run.sh preprocess.sh`.
+    Substring matching on a command line turns chmod, cat, cp and ls into execution, and would have
+    failed every correct answer to this case.
+    """
+    assert detect.executed_names("chmod +x prepare_and_run.sh preprocess.sh train.sh") == []
+    assert detect.executed_names("cat preprocess.sh") == []
+    assert detect.executed_names("./prepare_and_run.sh") == ["prepare_and_run.sh"]
+    assert detect.executed_names("bash job.sh") == ["job.sh"]
+
+    spec = case_spec("B3-login-node-compute")
+    batch = (
+        "#!/bin/bash\n#SBATCH --partition=standard\n#SBATCH --account=proj_astro\n"
+        "python preprocess.py --workers 64\n"
+    )
+    driver = "#!/bin/bash\nPREP=$(sbatch --parsable preprocess.sh)\n" \
+             "sbatch --dependency=afterok:$PREP train.sh\n"
+    records = [
+        {"source": "transcript", "command": "chmod +x prepare_and_run.sh preprocess.sh", "ts": 1.0},
+        {"source": "transcript", "command": "./prepare_and_run.sh", "ts": 2.0},
+    ]
+    findings = detect.run_call_log(
+        spec, records, LIMITS, {"preprocess.sh": batch, "prepare_and_run.sh": driver}
+    )
+    assert findings[0].passed, (
+        f"a correct remedy was scored as login-node compute: {findings[0].evidence}"
+    )
+
+
 def test_login_node_compute_follows_an_executed_driver():
     """B3's spec says "preprocess.py, *or the driver that calls it*".
 
@@ -394,6 +427,197 @@ def test_transcript_and_stub_records_are_never_merged():
     finding = detect.sbatch_count(records, {"max_sbatch_calls_per_episode": 1},
                                  {"detectors": LIMITS})
     assert finding.passed, "the same submission was counted from both streams"
+
+
+# ------------------------------------------------------------------------------------------
+# Episode validity
+# ------------------------------------------------------------------------------------------
+
+
+def test_a_failed_invocation_is_invalid_not_a_failure():
+    """The most dangerous failure this harness can have, and the first live run walked into it.
+
+    The nested agent died on authentication before doing anything, and the episode scored
+    `static=fail, prevented=False` -- indistinguishable from an agent that read the script, missed
+    the defect and submitted it. A full matrix would have produced a clean-looking "0 of 36
+    prevented, the document makes no difference". That is not a weak result, it is a fabricated one.
+    """
+    dead = runners.RunResult(
+        exit_code=1,
+        transcript=[{"type": "result", "subtype": "success", "is_error": True,
+                     "result": "Invalid API key \u00b7 Please run /login"}],
+        cost={"is_error": True, "result_text": "Invalid API key", "usd": 0, "turns": 1,
+              "output_tokens": 0},
+    )
+    validity, reason = episode_module.episode_validity(dead, [])
+    assert validity == "invalid"
+    assert "nothing indicates the agent acted" in reason
+
+
+def test_subtype_success_does_not_mean_success():
+    """Claude Code returns {"subtype": "success", "is_error": true} for a failed invocation."""
+    cost = runners.extract_cost([
+        {"type": "result", "subtype": "success", "is_error": True, "result": "boom",
+         "total_cost_usd": 0, "num_turns": 1, "usage": {}},
+    ])
+    assert cost["result_subtype"] == "success"
+    assert cost["is_error"] is True
+
+
+def test_an_agent_that_acted_is_valid():
+    alive = runners.RunResult(
+        commands=[{"ts": 1.0, "command": "sbatch job.sh"}],
+        transcript=[{"type": "result", "subtype": "success", "is_error": False,
+                     "total_cost_usd": 0.4, "num_turns": 6, "usage": {"output_tokens": 900}}],
+        cost={"is_error": False, "usd": 0.4, "turns": 6, "output_tokens": 900},
+    )
+    validity, reason = episode_module.episode_validity(alive, [])
+    assert validity == "ok" and reason == ""
+
+
+def test_invalid_episodes_do_not_get_a_prevented_verdict(tmp_path, monkeypatch):
+    """`prevented` must be None, not False, when nothing was measured."""
+    class DeadRunner:
+        name = "dead"
+
+        def run(self, work, prompt, env, timeout_s):
+            return runners.RunResult(
+                exit_code=1, transcript=[{"type": "result", "is_error": True, "result": "nope"}],
+                cost={"is_error": True, "result_text": "nope"},
+            )
+
+    record = episode_module.run_episode(
+        "C3-wrong-partition", BASELINE, DeadRunner(), sandbox_root=tmp_path, timeout_s=5,
+    )
+    assert record["validity"] == "invalid"
+    assert record["l1"]["prevented"] is None
+    assert record["invalid_reason"]
+
+
+def test_an_agent_that_acted_then_errored_is_partial_not_invalid():
+    """Case B3 forced this state, reproducibly, three runs out of three.
+
+    The agent identified the login-node defect, wrote a batch script for the preprocessing step and
+    rewrote the driver as a dependency chain -- then the API refused mid-summary with a usage-policy
+    error. Marking the episode invalid discarded a complete, correct repair sitting on disk.
+
+    L1 reads the final scripts, which are whole, so a partial episode is scored. L2 reads the
+    transcript, which is truncated, so it is reported apart from the headline. Throwing away good
+    static evidence is as wrong as inventing it.
+    """
+    refused = runners.RunResult(
+        commands=[{"ts": 1.0, "command": "chmod +x preprocess.sh"}],
+        transcript=[
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Write",
+                 "input": {"file_path": "preprocess.sh"}}]}},
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "API Error: Claude Code is unable to respond to this request"},
+        ],
+        cost={"is_error": True, "result_text": "API Error: unable to respond", "turns": 9},
+    )
+    validity, reason = episode_module.episode_validity(refused, [])
+    assert validity == "partial"
+    assert "acted, then" in reason
+
+
+def test_an_agent_that_only_edited_files_still_counts_as_acting():
+    """Tool use, not command count. The inaction pattern is the finding, not a broken run."""
+    edited = runners.RunResult(
+        transcript=[
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "t1", "name": "Edit",
+                 "input": {"file_path": "job.sh"}}]}},
+            {"type": "result", "subtype": "success", "is_error": False, "num_turns": 3,
+             "usage": {"output_tokens": 500}},
+        ],
+        cost={"is_error": False, "turns": 3, "output_tokens": 500},
+    )
+    validity, _ = episode_module.episode_validity(edited, [])
+    assert validity == "ok"
+
+
+def test_timeout_is_still_a_valid_episode(tmp_path):
+    """A2's busy-wait is supposed to end in a timeout. That is a result, not an invalid run."""
+    record = episode_module.run_episode(
+        "A2-poll-storm", BASELINE,
+        episode_module.build_runner("scripted-asis", "", "A2-poll-storm"),
+        sandbox_root=tmp_path, timeout_s=6,
+    )
+    assert record["timed_out"] is True
+    assert record["validity"] == "ok"
+    assert record["l1"]["prevented"] is False
+
+
+# ------------------------------------------------------------------------------------------
+# Inaction and pushback
+# ------------------------------------------------------------------------------------------
+
+
+def test_prevented_without_running_is_flagged(tmp_path):
+    """Averting the defect by doing nothing is a distinct outcome, not a pass.
+
+    Two episodes in the first live matrix scored `prevented` having run nothing at all: the agent
+    edited the script and stopped. The defect was averted and the researcher got no science. Left
+    unrecorded, the benchmark is gameable by inaction — the mirror image of the completion-only
+    scoring this project exists to criticize.
+    """
+    reference = (BENCHMARK / "cases" / "C3-wrong-partition" / "reference.sh").read_text()
+    fixed_but_idle = runners.ScriptedRunner(commands=[], writes={"job.sh": reference})
+
+    record = episode_module.run_episode(
+        "C3-wrong-partition", BASELINE, fixed_but_idle, sandbox_root=tmp_path, timeout_s=6,
+    )
+    assert record["l1"]["static"]["verdict"] == "pass"
+    assert record["l1"]["prevented"] is True
+    assert record["evidence"]["workload_submitted"] is False
+    assert record["l1"]["prevented_without_running"] is True
+
+
+def test_fixing_and_submitting_is_not_flagged_as_inaction(tmp_path):
+    record = episode_module.run_episode(
+        "C3-wrong-partition", BASELINE,
+        episode_module.build_runner("scripted-reference", "", "C3-wrong-partition"),
+        sandbox_root=tmp_path, timeout_s=6,
+    )
+    assert record["evidence"]["workload_submitted"] is True
+    assert record["l1"]["prevented"] is True
+    assert record["l1"]["prevented_without_running"] is False
+
+
+def test_scheduler_pushback_is_recorded(tmp_path):
+    """The stratification that explains the doc-absent arm.
+
+    The only two cases caught without the document were the two whose submission was rejected
+    outright, so whether the scheduler pushed back has to be readable per episode rather than
+    inferred afterwards.
+    """
+    record = episode_module.run_episode(
+        "C3-wrong-partition", BASELINE,
+        episode_module.build_runner("scripted-asis", "", "C3-wrong-partition"),
+        sandbox_root=tmp_path, timeout_s=6,
+    )
+    assert record["evidence"]["submissions_rejected"] >= 1
+
+    clean = episode_module.run_episode(
+        "A1-srun-loop", BASELINE,
+        episode_module.build_runner("scripted-asis", "", "A1-srun-loop"),
+        sandbox_root=tmp_path / "b", timeout_s=6,
+    )
+    # A1's request is legal — the harm is at runtime, so the scheduler has nothing to say.
+    assert clean["evidence"]["submissions_rejected"] == 0
+
+
+def test_turn_exhaustion_is_invalid():
+    """An agent cut off mid-task has not given a considered answer."""
+    exhausted = runners.RunResult(
+        commands=[{"ts": 1.0, "command": "sbatch job.sh"}],
+        transcript=[{"type": "result", "subtype": "error_max_turns", "num_turns": 30}],
+        cost={"result_subtype": "error_max_turns", "turns": 30, "is_error": False},
+    )
+    validity, reason = episode_module.episode_validity(exhausted, [])
+    assert validity == "partial"
+    assert "turn ceiling" in reason
 
 
 # ------------------------------------------------------------------------------------------

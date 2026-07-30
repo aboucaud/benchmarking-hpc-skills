@@ -365,6 +365,34 @@ def test_sinfo_reveals_partitions_and_uses_slurm_time_format(sandbox):
     assert "0:30:00" not in result.stdout
 
 
+def test_sinfo_format_string_reveals_gres(sandbox):
+    """`sinfo -o "%P %N %c %m %G"` — the exact probe the first live episode ran.
+
+    Real sinfo's default output carries no GRES column, so `-o %G` is the only route to discovering
+    which partition has GPUs. The stub ignored the format string and printed its default table, so
+    an agent asking which partition has GPUs got an answer containing no GPU information — silently
+    blocking the probing route the doc-absent arm depends on.
+    """
+    result = sandbox.run("sinfo", "-o", "%P %N %c %m %G")
+    assert result.returncode == 0
+    assert "GRES" in result.stdout
+    accel = next(line for line in result.stdout.splitlines() if line.startswith("accel"))
+    assert "gpu:4" in accel
+    for cpu_partition in ("standard", "extended", "debug"):
+        row = next(line for line in result.stdout.splitlines()
+                   if line.startswith(cpu_partition))
+        assert "gpu" not in row, f"{cpu_partition} must not advertise GPUs"
+
+
+def test_sinfo_default_output_keeps_its_shape(sandbox):
+    """Default sinfo has no GRES column, exactly as the real thing does not."""
+    result = sandbox.run("sinfo")
+    assert "GRES" not in result.stdout
+    assert result.stdout.splitlines()[0].split() == [
+        "PARTITION", "AVAIL", "TIMELIMIT", "NODES", "STATE", "NODELIST",
+    ]
+
+
 def test_scontrol_show_partition_reveals_max_nodes(sandbox):
     """The per-job node ceiling appears in no other interface."""
     result = sandbox.run("scontrol", "show", "partition", "extended")
