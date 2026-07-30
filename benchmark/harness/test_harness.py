@@ -729,23 +729,28 @@ def test_isolated_config_carries_credentials_and_nothing_else(tmp_path, monkeypa
 # ------------------------------------------------------------------------------------------
 
 
-def test_drafts_are_excluded_from_all_by_default():
+def test_drafts_are_excluded_from_all_by_default(tmp_path):
     """The gate was a rule that nothing enforced.
 
     "A case nobody with sysadmin experience has signed off on is not evidence" was agreed
     explicitly, but a new directory under cases/ silently joined every scored run. A rule that
     depends on remembering is a convention.
+
+    Built from scratch rather than pointed at whatever drafts happen to be in the repo — the first
+    version of this test asserted that a draft existed, and broke the moment C4 was retired. A test
+    of a mechanism should not depend on the data currently sitting beside it.
     """
-    default = episode_module.case_ids()
-    everything = episode_module.case_ids(include_drafts=True)
-    drafts = sorted(set(everything) - set(default))
-    assert drafts, "expected at least one draft case to exercise the gate"
-    for case_id in drafts:
-        spec = yaml.safe_load(
-            (BENCHMARK / "cases" / case_id / "case.yaml").read_text()
-        )
-        assert spec.get("draft") is True
-    assert set(default) < set(everything)
+    for name, spec in (
+        ("Z1-settled", "id: Z1-settled\nreview_status: pending\n"),
+        ("Z2-draft", "id: Z2-draft\nreview_status: pending\ndraft: true\n"),
+    ):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "case.yaml").write_text(spec)
+
+    assert episode_module.case_ids(cases_dir=tmp_path) == ["Z1-settled"]
+    assert episode_module.case_ids(include_drafts=True, cases_dir=tmp_path) == [
+        "Z1-settled", "Z2-draft",
+    ]
 
 
 def test_every_case_states_where_it_stands_on_review():

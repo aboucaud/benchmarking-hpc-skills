@@ -559,7 +559,7 @@ def reference_runner(case_id: str) -> runner_module.ScriptedRunner:
     )
 
 
-def case_ids(include_drafts: bool = False) -> list[str]:
+def case_ids(include_drafts: bool = False, cases_dir: Path | None = None) -> list[str]:
     """Every case `all` should run, and the review gate made mechanical.
 
     A case marked `draft: true` is excluded unless asked for. The gate — "a case nobody with
@@ -574,7 +574,7 @@ def case_ids(include_drafts: bool = False) -> list[str]:
     otherwise.
     """
     found = []
-    for path in sorted((BENCHMARK / "cases").iterdir()):
+    for path in sorted((cases_dir or BENCHMARK / "cases").iterdir()):
         if not path.is_dir():
             continue
         spec = yaml.safe_load((path / "case.yaml").read_text())

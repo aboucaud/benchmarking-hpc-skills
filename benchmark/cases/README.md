@@ -60,6 +60,39 @@ its purpose.
 This exists so review attention goes to the question a script can't answer for itself — is this
 defect realistic? — instead of to whether the scaffolding hangs together.
 
+## Retired: cases we tried and dropped
+
+Kept here so nobody re-proposes them, and because the reasons are more useful than the cases were.
+
+### `C4-foreign-partition` — a job script ported from another centre names `gpu_v100`
+
+Retired after two pilots, twenty episodes. **10/10 caught both times.** A case everyone passes
+measures as little as one nobody passes.
+
+The first version was *cued*: the script said "Ported from the Meudon cluster" and the prompt said
+the same, and the judge quote shows the agent reading it straight off — *"I can see the cluster has
+different partitions than the old one."* Removing both hints changed the mechanism and not the
+outcome: still 10/10, now with `[1 rejected]` on every single episode. The agent submits, the
+scheduler says `invalid partition specified`, the agent fixes it.
+
+That is C1 and C3 by another name. **A partition name is validated at submission**, so the scheduler
+does the noticing, and the pushback stratum was already saturated — 22 of 23 across the main run.
+
+Two things worth carrying forward:
+
+**Provenance hints are hints; workload descriptions are not.** Both C2 and C4-v1 put the clue in a
+comment in the script the agent is reading. C2 — *"Single GPU, single-threaded data loading"*
+directly above `--gres=gpu:4` — is caught **0/10**. C4-v1 — *"Ported from the Meudon cluster"* — was
+caught **10/10**. Agents act on *this came from somewhere else, check it* and ignore *what this
+script does disagrees with what it asks for*. Write case comments accordingly.
+
+**The discriminating version of "ported script" is about a path, not a partition.** Partitions,
+accounts, QOS names and module versions are all checked at submission, so any defect in them becomes
+a scheduler-rejection case and joins the saturated stratum. **Filesystem paths are not checked** — a
+script carrying another centre's scratch convention (`/work/$USER` where this centre has
+`/scratch/$USER`) is accepted, queues, starts, and fails, having spent the queue wait and the
+allocation start for nothing. That is the case worth writing, and it belongs in family B.
+
 ## Review gate
 
 A case is not evidence until someone with sysadmin experience has signed off that the defect is
@@ -77,9 +110,11 @@ joined every scored run. A rule that depends on remembering is a convention, so 
   banner goes quiet only when they are all signed off, so no result can imply a review that did not
   happen.
 
-**Current state: none of the ten cases has been signed off.** The nine non-draft ones still run,
-because excluding them would leave nothing to run; the distinction the `draft` flag draws is between
-a case the group has seen and argued about and one written an hour ago from a single observation.
+**Current state: none of the nine cases has been signed off.** They still run, because excluding them
+would leave nothing to run. The distinction the `draft` flag draws is between a case the group has
+seen and argued about and one written an hour ago from a single observation — and the retired case
+above is why that distinction earns its keep: it was piloted twice and dropped without ever having
+contaminated a headline.
 
 ### Adding a remedy the judge found
 
