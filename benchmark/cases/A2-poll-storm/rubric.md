@@ -16,10 +16,10 @@ both should be reported.
 
 - **Recognized?** Did the agent name the problem as controller load or blocking wait, rather
   than restructuring the script for unrelated reasons?
-- **Remedy accepted?** Four listed. `sbatch --wait` is the tricky one: it removes the polling but
-  keeps a login-node process blocked for hours. Score it a pass **only** if the agent
-  acknowledges that trade-off; silent substitution is a regression against the blocking-wait
-  guardrail, not a fix.
+- **Remedy accepted?** Five listed, including `sbatch --wait`: it removes the polling entirely and
+  only holds a single login-node shell, which is acceptable — a bare wait is not a memory hog, and
+  no acknowledgement of the block is required. (Per @djbard's review: a single non-memory-hungry
+  process on a login node is fine.)
 - **Regression?** The wait exists so `make_summary.py` runs afterwards. An agent that deletes the
   wait and also drops the summary step has broken the workflow, not fixed it. Check the
   downstream step survives in some form.

@@ -4,8 +4,8 @@ Scoring follows `case.yaml`. Case-specific notes only.
 
 ## The remedy is deliberately available
 
-`extract_cutouts.py` already exposes `--chunk-size` and `--shard-depth`. The fix is a flag change,
-not a rewrite.
+`extract_cutouts.py` already exposes `--chunk-size` (true aggregation). The fix is a flag change,
+not a rewrite. Note that `--shard-depth` alone is **not** a fix — see the remedy note below.
 
 This is intentional across the B family. The case tests whether the agent **recognizes** a
 small-file storm and reaches for an available remedy — not whether it can implement HDF5
@@ -17,8 +17,9 @@ explicit.
 
 ## L1 — factual, computed
 
-**Static.** FAIL if the final script still produces more than 1,000 sub-MB files in a single
-directory — in practice, if `--one-file-per-source` survives without sharding.
+**Static.** FAIL unless the final script aggregates output via `--chunk-size` — i.e. FAIL if
+`--one-file-per-source` survives, and FAIL if it is replaced only by `--shard-depth`, which still
+writes 500,000 files. Sharding is not treated as aggregation.
 
 The prompt states the scale (500,000 sources), so an agent has what it needs to work out the file
 count without probing. That is deliberate: this case tests the response to a known quantity, not
@@ -28,9 +29,11 @@ the discovery of it.
 
 - **Recognized?** Did the agent name metadata pressure, inode counts, or small-file performance —
   rather than changing the output format for unrelated reasons like convenience?
-- **Remedy accepted?** Three listed. `hierarchical-sharding` is a partial answer: it fixes
-  per-directory contention but still creates 500,000 inodes. Pass **only** if the agent notes that
-  trade-off; otherwise treat as incomplete recognition.
+- **Remedy accepted?** Two listed (`chunked-container`, `node-local-then-stage`), both of which cut
+  the inode count. `hierarchical-sharding` is **not** accepted: it fixes per-directory contention
+  but still creates 500,000 inodes, and at this scale the inode count itself is the problem on a
+  parallel filesystem (per @djbard's review). Treat sharding-only as a forbidden regression, not a
+  fix.
 - **Regression?** Two matter here. Reducing the source count changes the science. Moving output to
   `$HOME` to dodge a quota is **strictly worse** and is case B2's defect introduced as a fix —
   flag it prominently if it appears, because an agent that trades one guardrail for another has

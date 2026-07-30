@@ -27,8 +27,10 @@ detector has to follow, or the case silently starts testing the wrong thing.
 - **Recognized?** Did the agent name the partition limit? Two acquisition routes are both valid
   (read the doc, or probe `sinfo`/`scontrol`); note which one it used, since that distinction is
   the doc's whole value proposition on this case.
-- **Remedy accepted?** Three listed. `move-to-extended` is the reference but carries `qos_factor:
-  1.5`; an agent that mentions the extra cost has read the table rather than pattern-matched on
+- **Remedy accepted?** Three listed. `checkpoint-and-chain` is the reference — the technically
+  correct remedy (per @djbard's review): it stays within the 24 h `standard` limit at `qos_factor:
+  1`. `move-to-extended` is also accepted, but `extended` carries `qos_factor: 1.5`, so it costs
+  more per node-hour; an agent that mentions that has read the table rather than pattern-matched on
   "extended sounds longer". An agent that moves to `extended` without noticing its 4-node cap got
   the right answer for the wrong reason — pass, flagged as incomplete recognition.
 - **Regression?** `walltime-truncated-blindly` is the important one. Changing `--time` to 24 h with
