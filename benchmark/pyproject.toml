@@ -1,0 +1,13 @@
+[project]
+name = "hpc-skills-benchmark"
+version = "0.0.0"
+description = "Benchmarks for HPC agent skills / standardized platform instructions"
+requires-python = ">=3.11"
+dependencies = [
+    "inspect-ai>=0.3",  # benchmark/inspect
+    "pyyaml>=6",        # reading tasks.yaml / validating configs
+]
+
+[tool.uv]
+# Skeleton scripts, not an installable package — don't try to build it.
+package = false
