@@ -260,6 +260,17 @@ ENVIRONMENT_FAILURES = (
 )
 
 
+# How many environment failures in a row before a run gives up.
+#
+# Not one: a single overloaded-API episode is worth riding out, and `--retries` already re-attempts
+# those. Not never: the 90-episode matrix that motivated this ran for four hours and produced a
+# complete-looking results file in which no episode had happened. Three consecutive failures,
+# across different cases and conditions, is not weather.
+#
+# The counter resets on any episode that runs, so a merely flaky run continues.
+ABORT_AFTER = 3
+
+
 def environment_failure(result: runner_module.RunResult) -> tuple[str, str]:
     """Name an environment failure in the runner's own output. Returns (kind, evidence).
 
@@ -726,15 +737,6 @@ def main() -> int:
     if arguments.matrix and not arguments.skills:
         print("note: --skills not given, so only the skills-none arm runs\n", file=sys.stderr)
 
-    # How many environment failures in a row before the run gives up.
-    #
-    # Not one: a single overloaded-API episode is worth riding out, and `--retries` already
-    # re-attempts those. Not never: the 90-episode matrix that motivated this spent four hours and
-    # produced a complete-looking results file in which every record was a revoked token. Three
-    # consecutive failures across different cases is not weather.
-    #
-    # The counter resets on any episode that runs, so a run that is merely flaky continues.
-    ABORT_AFTER = 3
     consecutive_environment_failures = 0
     aborted = ""
 

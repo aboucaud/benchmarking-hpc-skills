@@ -549,6 +549,61 @@ def test_an_agent_that_acted_despite_a_later_error_is_still_partial():
     assert "acted, then" in reason
 
 
+def test_a_run_that_only_measures_its_environment_stops(tmp_path, monkeypatch, capsys):
+    """The whole run gives up after ABORT_AFTER consecutive environment failures.
+
+    Driven through `main()` rather than a helper, because the thing being tested is the loop's
+    control flow across all three of its levels — the abort has to escape the seed loop, the
+    condition loop and the case loop, and a `break` that only escapes the innermost one would
+    still run every remaining case.
+
+    Worth having as a unit test rather than trusting a live check: the live one is only faithful
+    while an outage lasts, and the first attempt at it was not faithful at all. Run with a 60s
+    timeout, the CLI never got as far as emitting its 401 — the episodes looked like plain
+    timeouts, no environment failure was visible in the evidence, and the run correctly did not
+    abort. Correct behaviour, useless verification.
+    """
+    class RevokedRunner:
+        name = "revoked"
+        model = "none"
+
+        def run(self, work, prompt, env, timeout_s):
+            return runners.RunResult(
+                exit_code=1,
+                transcript=[
+                    {"type": "system", "subtype": "init"},
+                    {"type": "result", "subtype": "success", "is_error": True,
+                     "result": "API Error: 401 OAuth access token has been revoked."},
+                ],
+                cost={"is_error": True, "usd": 0, "turns": 1, "output_tokens": 0},
+            )
+
+    monkeypatch.setattr(episode_module, "build_runner", lambda *a, **k: RevokedRunner())
+    monkeypatch.setattr(
+        sys, "argv",
+        ["episode.py", "all", "--matrix", "--seeds", "5", "--results", str(tmp_path)],
+    )
+    episode_module.main()
+
+    written = list(tmp_path.glob("episodes-*.jsonl"))
+    assert len(written) == 1
+    records = [json.loads(line) for line in written[0].read_text().splitlines()]
+
+    # Three, not ninety.
+    assert len(records) == episode_module.ABORT_AFTER
+    assert all(record["environment_failure"] == "authentication" for record in records)
+    assert all(record["validity"] == "invalid" for record in records)
+    # Nothing was scored. `prevented` must be None rather than False, or a dead token reads as
+    # ninety agents that failed to catch anything.
+    assert all(record["l1"]["prevented"] is None for record in records)
+
+    printed = capsys.readouterr().out
+    assert "RUN ABORTED" in printed
+    # The abort has to say it is not a result, and say so before any number.
+    assert "not a result" in printed
+    assert printed.index("RUN ABORTED") < printed.index("episodes INVALID")
+
+
 def test_subtype_success_does_not_mean_success():
     """Claude Code returns {"subtype": "success", "is_error": true} for a failed invocation."""
     cost = runners.extract_cost([
