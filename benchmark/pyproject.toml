@@ -4,8 +4,7 @@ version = "0.0.0"
 description = "Benchmarks for HPC agent skills / standardized platform instructions"
 requires-python = ">=3.11"
 dependencies = [
-    "inspect-ai>=0.3",  # benchmark/inspect
-    "pyyaml>=6",        # reading tasks.yaml / validating configs
+    "pyyaml>=6",  # center.yaml, case.yaml, generated configs
 ]
 
 [tool.uv]

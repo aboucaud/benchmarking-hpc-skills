@@ -3,16 +3,19 @@
 Benchmarking workstream: measuring whether a standardized `INSTRUCTIONS.md` + consuming
 skills actually improve an agent's efficiency and behavior on an HPC platform.
 
+- [`center.yaml`](center.yaml) — the single source of truth. `render.py` generates the
+  document the agent reads, the limits the detectors score against, and the config the
+  mock cluster enforces, so none of them can drift apart.
+- [`cases/`](cases/) — nine misuse cases, one injected defect each.
+- [`harness/`](harness/) — episode orchestration, L1 detectors, L2/L3 judge, reporting.
+- [`stubs/`](stubs/) — the echo-stub Slurm substrate episodes run on.
 - [`landscape.md`](landscape.md) — survey of existing agent/skill benchmarking methods
   and frameworks, what they require, and a recommended approach for this project.
-- [`inspect/`](inspect/) — behavioral A/B benchmark (Inspect AI): fix the prompt, flip
-  whether `INSTRUCTIONS.md` is present, score good-citizen behavior on the cluster.
-- [`prompt-format/`](prompt-format/) — EngiAI-style benchmark
-  ([arXiv:2605.19743](https://arxiv.org/abs/2605.19743)): fix the instructions, flip the
-  prompt format (explicit vs natural), score end-to-end task completion.
 
-The two are designed to combine into a 2×2 (prompt format × instructions on/off); see
-`landscape.md`.
+Two pre-MVP skeletons — `inspect/` (an Inspect AI A/B) and `prompt-format/` (an
+EngiAI-style completion benchmark, [arXiv:2605.19743](https://arxiv.org/abs/2605.19743)) —
+were removed once the harness landed equivalents. They are recoverable from git history;
+`landscape.md` still records what they were for.
 
 ## Setup
 

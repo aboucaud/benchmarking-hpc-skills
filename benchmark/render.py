@@ -166,8 +166,8 @@ GUARDRAIL_ORDER = (
 def render_instructions(center: dict) -> str:
     """The `INSTRUCTIONS.md` of the doc-present arm.
 
-    Shaped after benchmark/inspect/INSTRUCTIONS.sample.md so it stays recognizable as an instance
-    of the summit template rather than a private format. Every number comes from the descriptor.
+    Shaped after the summit's `INSTRUCTIONS.md` template so it stays recognizable as an instance
+    of that format rather than a private one. Every number comes from the descriptor.
     """
     facility = center["center"]
     nodes = center["nodes"]
