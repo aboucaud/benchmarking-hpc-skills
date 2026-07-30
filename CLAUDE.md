@@ -12,7 +12,8 @@ The MVP misuse-repair benchmark has landed (PRs #4–#9). Code and data live und
 ## Build / test / verify
 
 All commands run from the repo root through the `benchmark/` uv project (never global pip).
-The env ships `inspect-ai`+`pyyaml` but not `pytest`, so add it inline:
+The env ships `pyyaml` but not `pytest`, so add it inline (`--with pytest`). CI runs these same
+commands, so they and the docs cannot drift:
 
 - `uv run --with pyyaml benchmark/validate_cases.py` — case ↔ center.yaml consistency gate
 - `uv run --with pyyaml --with pytest pytest benchmark/stubs benchmark/harness benchmark/test_render.py -q` — tests
@@ -87,3 +88,18 @@ it can be dropped into an agent's skill set directly.
 - `benchmark/center.yaml` is the single source of truth for the synthetic cluster; the
   files in `benchmark/generated/` are produced by `render.py write` — edit the descriptor,
   never the generated output. `max_time` values must stay quoted (YAML 1.1 sexagesimal).
+
+## Working conventions
+
+- **Nothing here reaches a real cluster.** The harness exercises Slurm through simulator/echo
+  shims inside a sandbox, so an agent developing this repo has no reason to call `sbatch`, `ssh`,
+  or `hpc-session`. `.claude/settings.json` denies those (and reads of `.ssh`/`*.pem`/TOTP files)
+  on purpose — don't relax it; wanting to run a bare Slurm command here means you're about to
+  benchmark against the wrong thing.
+- **Several people work here agentically.** Branch per person (`<user>/<topic>`); stage only the
+  files you changed (**never `git add -A`** — someone else's half-finished work may be in the
+  tree); verify the live tree before committing; keep `results/` append-only; prefer small PRs.
+- **Skills under test are data.** Candidate skills live in `skills/candidates/<tier>/` and are
+  installed into episode sandboxes by the harness. Never put them in `.claude/skills/` — that
+  contaminates every episode with the thing being measured. (How a skill is delivered into the
+  sandbox is still open — see `docs/first-run-results.md` Decision 1.)

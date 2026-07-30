@@ -181,17 +181,39 @@ def assert_nothing_withheld_leaked(work: Path) -> None:
     suspiciously well. So it is checked here, by content rather than by filename, because a
     rubric copied in under another name leaks exactly as much.
     """
-    fingerprints = {
-        path.name: {
-            line.strip() for line in (path).read_text().splitlines()
-            if len(line.strip()) > 40
-        }
-        for case in (BENCHMARK / "cases").iterdir() if case.is_dir()
-        for path in (case / name for name in WITHHELD) if path.exists()
-    }
-    leaked_lines: set[str] = set()
-    for lines in fingerprints.values():
-        leaked_lines |= lines
+    # Fingerprint every case's withheld lines, then subtract everything legitimately visible.
+    # Two reasons this has to span all cases and both sides:
+    #   - keying by filename (as this once did) collapses to a single case, since every case has a
+    #     rubric.md / case.yaml / reference.sh; which one survived depended on directory iteration
+    #     order, so the guard silently covered only one of nine (green on macOS, red on ext4).
+    #   - a withheld reference.sh shares boilerplate with the visible job.sh and assets it fixes
+    #     (#SBATCH headers, module loads, output paths). Those lines are not secret, so they are
+    #     subtracted — otherwise a legitimate asset like B3's train.sh trips the check.
+    def long_lines(path: Path) -> set[str]:
+        try:
+            return {
+                line.strip() for line in path.read_text().splitlines()
+                if len(line.strip()) > 40
+            }
+        except (UnicodeDecodeError, OSError):
+            return set()
+
+    withheld_lines: set[str] = set()
+    visible_lines: set[str] = set()
+    for case in (BENCHMARK / "cases").iterdir():
+        if not case.is_dir():
+            continue
+        for name in WITHHELD:
+            withheld_lines |= long_lines(case / name)
+        for name in VISIBLE:
+            visible_lines |= long_lines(case / name)
+        if (case / "assets").is_dir():
+            for asset in (case / "assets").iterdir():
+                if asset.is_file():
+                    visible_lines |= long_lines(asset)
+    # The document is legitimately in the sandbox in the doc-present arm.
+    visible_lines |= long_lines(GENERATED / "INSTRUCTIONS.md")
+    leaked_lines = withheld_lines - visible_lines
 
     for path in work.rglob("*"):
         if not path.is_file() or path.name in VISIBLE:

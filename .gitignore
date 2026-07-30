@@ -1,3 +1,34 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
 .venv/
+*.egg-info/
+dist/
+build/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+
+# uv.lock IS committed (benchmark/uv.lock) — benchmark results must be attributable to an exact
+# environment.
+
+# Episode sandboxes and simulator state — regenerated, never committed
+sandboxes/
+*.sqlite
+*.sqlite3
+
+# Benchmark outputs: append-only per run, kept out of git.
+# Commit only the aggregated summaries a PR explicitly discusses.
+results/**
+!results/README.md
+
+# Local agent working notes (specs, plans). Not project deliverables —
+# see docs/benchmark-methodology.md for the reviewed methodology.
+docs/superpowers/
+
+# Personal agent overrides
+.claude/settings.local.json
+
+# OS
+.DS_Store
