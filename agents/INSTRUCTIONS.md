@@ -8,10 +8,11 @@ not a production cluster and must not be used for performance measurements.
 
 ### Nodes
 
-- **Login Nodes:** `login` runs as `demo_user` with a Docker limit of 1 CPU and
-  2 GiB memory. Use it only for editing, light file management, scheduler
-  inspection, and job submission. In benchmark episodes, the working directory
-  is `/episode/work`.
+- **Login Nodes:** `login` has a Docker limit of 1 CPU and 2 GiB memory. Use it
+  only for editing, light file management, scheduler inspection, and job
+  submission. The default local test identity is `demo_user`, but all guidance
+  in this document applies to the current logged-in user. In benchmark
+  episodes, the working directory is `/episode/work`.
 - **CPU Nodes:** `c1` and `c2` each have a Docker limit of 2 CPUs and 4 GiB
   memory. Slurm advertises 128 CPUs and 3,800 MiB schedulable memory per node so
   synthetic benchmark requests can be validated on a laptop.
@@ -52,8 +53,8 @@ The login shell defines:
 
 ```bash
 DATA=/data
-SCRATCH=/scratch/demo_user
-ARCHIVE=/archive/demo_user
+SCRATCH=/scratch/$USER
+ARCHIVE=/archive/$USER
 EPISODE_WORK=/episode/work
 ```
 
@@ -84,7 +85,7 @@ agent user has no `sudo` access and cannot access the host Docker socket.
 
 The cluster includes Rocky Linux 9, Slurm, Munge, OpenSSH, Git, GCC/G++, Make,
 Python 3, MariaDB clients, hwloc, Node.js, and Codex. Codex runs headlessly as
-`demo_user` on the login node; it is not installed on compute nodes.
+the logged-in user on the login node; it is not installed on compute nodes.
 
 For runner, authentication, and qualification commands, see the
 [mock-cluster documentation](../src/mock_cluster/README.md).
@@ -101,7 +102,7 @@ Common commands are:
 ```bash
 sinfo
 squeue --me
-sacct -u demo_user
+sacct -u "$USER"
 sbatch job.sh
 scancel JOB_ID
 ```
@@ -128,21 +129,25 @@ cannot satisfy GPU GRES requests.
 ### Charges
 
 This disposable cluster records accounting data but does not incur real
-charges. The modeled user allocation is 250,000 node-hours, charged using the
-queue factors above. Rejected jobs cost nothing; accepted jobs consume the
-modeled allocation for their runtime.
+charges. The default fixture models a 250,000 node-hour allocation, charged
+using the queue factors above. Every user must use their assigned allocation
+and account. Rejected jobs cost nothing; accepted jobs consume the modeled
+allocation for their runtime.
 
 ### Required user-specific information
 
-Use all of the following when constructing a job:
+Every user must determine and use all of the following when constructing a
+job:
 
-- User: `demo_user`
-- Account: `proj_astro` (required)
+- User: the current cluster identity (`$USER`); the mock default is
+  `demo_user`
+- Account: the account assigned to that user; the mock default is
+  `proj_astro`, and an account is required
 - Queue: choose from `standard`, `extended`, `accel`, or `debug`
 - Resources: request explicit nodes, tasks, CPUs per task, memory, and walltime
 - Output: write active job output under `/scratch/$USER`
 
-A minimal batch script is:
+For the default mock account, a minimal batch script is:
 
 ```bash
 #!/bin/bash
