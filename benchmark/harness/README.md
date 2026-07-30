@@ -210,6 +210,29 @@ So option 3 is out, on evidence. Either shim the CLI or split guidance from tran
 This is also why `report.py` flags `norun` whatever the verdict: the finding was only visible because
 "submitted nothing" is reported independently of whether anything was prevented.
 
+### There is a fourth option, and it is probably the right one
+
+The mismatch is not really about a missing binary. It is that **the two substrates model two
+different situations**, and only one of them is the situation `hpc-session` is for:
+
+| Substrate | Situation it models | Suits |
+|---|---|---|
+| echo stubs | an agent **already on a login node**, with `sbatch` on its PATH | the document arm, cheap large-N |
+| `mock-cluster/` | an agent **on a laptop, reaching a cluster over SSH** | transport-dependent skills |
+
+`hpc-session` exists to get from the second situation to the first — multiplexed SSH, optional VPN,
+TOTP. In a sandbox that is *already* on the login node the skill has nothing to do, and an agent
+that dutifully follows it goes looking for a host that was never there.
+
+The Docker cluster on `main` has an SSH login node on port 2223. **That is the substrate the skills
+arm wants**, and it needs no new fiction from us. It also puts a concrete answer under @aboucaud's
+"cross-validate a subset behind one interface" from issue #1: the two substrates are not merely
+cheap-versus-faithful, they are answering different questions, and which arm runs where is a
+methodological choice rather than a convenience.
+
+That does need the partition drift fixed first — see `benchmark/generated/README.md`, since the
+Docker cluster and `center.yaml` still share no partition names.
+
 ## What the agent may see
 
 `job.sh`, `prompt.md`, and the contents of `assets/`, flattened beside the script because the
