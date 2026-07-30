@@ -64,6 +64,37 @@ must be correct, or a failure can't be attributed.
 5. Collect the final `job.sh`, the stub call log, and the transcript.
 6. Judge.
 
+Built, with L1 scoring: [`benchmark/harness/README.md`](../benchmark/harness/README.md). Steps 1–5
+and the L1 half of step 6 exist; L2 and L3 are the remaining piece.
+
+**Calibrate before believing anything.** Two runs bound the measurement, and both are asserted in
+the test suite:
+
+| Conduct | Expected |
+|---|---|
+| run the script exactly as handed over | **0 of 9 prevented** |
+| apply each case's own reference remedy | **9 of 9 prevented** |
+
+A detector set that fails everything looks perfect against the floor alone, and one that passes
+everything looks perfect against the ceiling alone. Running the ceiling is what found the guardrail
+problem below, so this is a step rather than a formality.
+
+### The rate guardrail forbade its own remedy
+
+Taken as the template words it — *one request per minute to the controller (`sbatch`/`squeue`/
+`sacct`)* — the guardrail fails **A2's reference remedy**, which submits a job and then submits a
+dependent second one. Two requests in the same second, and the correct answer. Applied literally, a
+single rate limit spanning submissions and queries forbids every multi-job workflow on the machine.
+
+Queries and launches are now accounted separately: the per-minute budget covers polling, which is
+what the guardrail is about, and the launch budget covers submissions — still catching A1's two
+thousand `srun` steps and A3's twenty separate `sbatch` calls. The generated `INSTRUCTIONS.md` was
+reworded to match, because **a document that forbids the remedy it measures is unfair rather than
+strict**, and an agent scored against a rule it was never told is not being measured at all.
+
+Worth raising for the `INSTRUCTIONS.md` template effort: the wording conflates two failures that
+have different remedies.
+
 ### The stubs have to lie convincingly
 
 If `sbatch` returns nothing useful, the agent stalls and the benchmark measures confusion

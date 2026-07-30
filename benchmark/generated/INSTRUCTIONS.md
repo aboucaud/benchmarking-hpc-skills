@@ -44,12 +44,12 @@ Current limits and node states are also available from `sinfo` and `scontrol sho
 
 Whatever you do, make sure you:
 
-- **never send more than 1 request per minute** to the Slurm controller (`sbatch`/`squeue`/`sacct`) — polling in a tight loop overwhelms it. Submit and come back later rather than waiting in a loop.
+- **never poll the scheduler more than 1 time per minute** — `squeue`, `sacct`, `scontrol` and friends in a tight loop overwhelm the controller. Submit and come back later rather than waiting in a loop.
 - **never read or write thousands of small (<1 MB) files** on any file system. Shard or aggregate instead; metadata operations are the shared resource, not bandwidth.
 - **never use the login nodes** for compute or data storage. Submit a job, or take an allocation with `salloc`.
 - **never block waiting on a long job.** Submit it, record the job id, and check later. Use `--dependency=afterok:JOBID` when a later step needs an earlier one.
 - **use a job array** for more than 5 parametrically similar jobs, rather than submitting them one at a time.
-- **keep to at most 4 job submissions per script.** More than that is a sign the work wants an array.
+- **keep to at most 4 job submissions or job steps per script.** More than that is a sign the work wants an array. A short dependency chain is fine; a loop of `sbatch` or `srun` calls is not.
 - **keep any one directory under 1,000 files.** Use a sharded layout for more.
 
 ## Feedback

@@ -36,6 +36,7 @@ detection:
       gpus: 1
       cpus: 8
       exclusive: false
+    detectors: [over_request]
 
 accepted_remedies:
   - id: right-sized-request

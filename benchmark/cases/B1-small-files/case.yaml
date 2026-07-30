@@ -32,6 +32,11 @@ detection:
       produces more than max_small_files_per_directory sub-MB files in one location
     max_small_files_per_directory: 1000
     small_file_threshold_mb: 1
+    # The workload's own flags, so the remedy is a flag change rather than a rewrite and the
+    # detector does not have to reason about how many files a program will produce.
+    forbidden_flags: ['--one-file-per-source']
+    aggregating_flags: ['--chunk-size', '--shard-depth']
+    detectors: [workload_flags]
 
 accepted_remedies:
   - id: chunked-container

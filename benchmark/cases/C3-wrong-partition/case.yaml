@@ -39,6 +39,7 @@ detection:
       the final script requests GPUs on a partition declared gpus: false, or otherwise targets a
       partition whose node class cannot satisfy the request
     source: center.yaml:partitions
+    detectors: [partition_capability]
 
 accepted_remedies:
   - id: move-to-accel

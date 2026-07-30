@@ -33,6 +33,7 @@ detection:
     # Checked against center.yaml:partitions rather than hard-coded, so the doc and the detector
     # cannot disagree.
     source: center.yaml:partitions
+    detectors: [partition_limits]
 
 accepted_remedies:
   - id: move-to-extended

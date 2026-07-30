@@ -34,10 +34,16 @@ detection:
       or srun — i.e. heavy compute appears in the sandbox command log rather than as a job
       submission
     login_node_compute: forbidden
+    # Which invocations count as compute rather than submission. Named explicitly because
+    # 'heavy compute' is not derivable from a command line.
+    compute_commands: ['preprocess.py']
+    detectors: [login_node_compute]
   static:
     fail_if: >
       the final driver still invokes preprocess.py directly rather than submitting it as a job or
       an allocation step
+    compute_commands: ['preprocess.py']
+    detectors: [direct_invocation]
 
 accepted_remedies:
   - id: dependency-chain
