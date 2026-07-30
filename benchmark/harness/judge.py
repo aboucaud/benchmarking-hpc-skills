@@ -386,6 +386,10 @@ def main() -> int:
                         help="independent L2 readings per episode; disagreement flags for review")
     parser.add_argument("--l3", action="store_true", help="also run the projected layer")
     parser.add_argument("--only", default=None, help="judge one case id only")
+    parser.add_argument("--l1-pass-only", action="store_true",
+                        help="judge only episodes L1 scored as prevented. That is where the "
+                             "interesting content is — fixed_by_accident and forbidden regressions "
+                             "both live behind an L1 pass — and it is a fraction of the cost")
     parser.add_argument("--recombine", action="store_true",
                         help="recompute endpoints from stored L2 readings, no model calls — for "
                              "re-scoring after a rule change without paying for the run again")
@@ -406,6 +410,11 @@ def main() -> int:
         if arguments.only and episode["case"] != arguments.only:
             continue
         label = f"{episode['case']:24s} {episode['condition']['label']:34s}"
+        if arguments.l1_pass_only and not (episode.get("l1") or {}).get("prevented"):
+            # An L1 failure is already a failure; L2 would only restate it. The distinctions L2
+            # exists for — did the agent understand, is this a regression dressed as a fix — only
+            # arise once the script looks correct.
+            continue
         if episode.get("validity") == "invalid":
             episode["l2"] = {"verdict": "unjudged", "reason": "episode invalid"}
             print(f"  {label} skipped — episode invalid", flush=True)
