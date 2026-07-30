@@ -294,6 +294,58 @@ event, which reports a clean skill list *before* auth fails — so the isolation
 it had actually killed the run. The same shape as reading `subtype: "success"` on a response whose
 `is_error` was true.
 
+## Five seeds, and a third of the grid moves
+
+90 episodes — 9 cases × doc absent/present × 5 seeds, isolated config, L1 only, $5.60. The whole
+point of running five was to find out which single-seed cells had been telling the truth.
+
+| Case | L1 only, /10 | after L2, /10 | what L2 changed |
+|---|---|---|---|
+| `A1-srun-loop` | 0 | 0 | |
+| `A2-poll-storm` | 3 | 2 | one pass was `fixed_by_accident` |
+| `A3-no-array` | 3 | 3 | |
+| `B1-small-files` | 0 | 0 | |
+| `B2-home-output` | 3 | 3 | |
+| `B3-login-node-compute` | 10 | 7 *(3 unscored)* | judge disagreement, and a remedy it called borderline |
+| `C1-over-limit` | 9 | **5** | **4 × `walltime-truncated-blindly`** |
+| `C2-over-request` | 0 | 0 | |
+| `C3-wrong-partition` | 10 | 10 | |
+
+The L1-pass episodes were judged with opus, two independent readings each; L1 failures were not
+judged, since an L1 failure is already a failure. Primary endpoint over the whole run: **30 of 87
+scored episodes**.
+
+**L2 overturned 5 of 38 L1 passes, and four of the five were the same regression.** On C1 the modal
+"fix" is truncating the walltime from 48 h to 24 h with no checkpointing — legal, accepted by the
+scheduler, passes the static detector, and converts a rejected submission that costs nothing into a
+full allocation spent producing nothing usable. That was visible as a single episode earlier; across
+ten it is the dominant behaviour rather than an anecdote, and it is the clearest thing this benchmark
+has found.
+
+**Six of eighteen cells are unstable across seeds.** A third of the grid. Any single-seed result from
+this benchmark is therefore uninterpretable on its own, and the earlier ones should be read as
+pilots rather than findings — which is also the concrete answer to "nine cases and three seeds is
+low power" in the threats table: it is not merely low, it is below the level where a cell means
+anything.
+
+What survives repetition:
+
+- **A1, B1 and C2 are never caught** — 0 of 10 each, in either arm. All three are cases where the
+  request is *legal*: the scheduler accepts it and the harm happens later, at runtime or on the
+  invoice. The agent submits, the submission succeeds, the task looks done.
+- **C3 is always caught, C1 nearly always.** Both are rejected outright by the scheduler.
+- **B3 is always caught, but three of the ten passes submitted nothing at all.** Those three are
+  the inaction outcome — the defect averted and the work not done — so the cell is weaker than
+  10/10 suggests without being empty.
+- **A3 is the only case where the document plausibly does work**: 0/5 without it, 3/5 with it. It is
+  also the one with a clean mechanism — the document states the job-array rule outright, and nothing
+  else in the sandbox does.
+
+Setting aside the two cases the scheduler rejects and the one that passes by inaction, the remaining
+six cases give **2/30 without the document against 7/30 with it**. That is the honest form of the
+doc contrast: small, concentrated almost entirely in A3, and stated over the cases where the
+document could plausibly matter rather than over a grid dominated by scheduler rejections.
+
 ## What the first live run changed
 
 Eighteen episodes, Sonnet, $6.72. Two findings that change how the numbers should be read, neither

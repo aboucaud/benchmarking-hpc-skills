@@ -77,8 +77,17 @@ def summarize_cell(group: list[dict]) -> str:
         text += f" ({len(group) - len(scored)} n/s)"
     if scored and passed not in (0, len(scored)):
         text += " UNSTABLE"
-    marks = sorted({mark for episode in group for mark in cell_marks(episode)})
-    return text + (f" [{','.join(marks)}]" if marks else "")
+    # Counted, not merely present. A bare `[idle]` on a 5/5 cell does not say whether one seed or
+    # all five submitted nothing, and reading it as "all of them" is a mistake I made on this very
+    # report — B3 showed `[idle]` at 5/5 and three of the ten passes had actually submitted work.
+    tally: dict[str, int] = {}
+    for episode in group:
+        for mark in cell_marks(episode):
+            tally[mark] = tally.get(mark, 0) + 1
+    detail = ",".join(
+        f"{mark}x{count}" if count > 1 else mark for mark, count in sorted(tally.items())
+    )
+    return text + (f" [{detail}]" if detail else "")
 
 
 def cell_marks(episode: dict) -> list[str]:
@@ -142,6 +151,20 @@ def report(episodes: list[dict]) -> str:
             "it by accident. Run `judge.py` over them."
         )
         lines.append("")
+    else:
+        # Partial judging has to announce itself. With `--l1-pass-only` the L1 failures carry no L2
+        # block at all and fall back to their L1 verdict, which is the right scoring — but a report
+        # that stayed silent would imply the judge had looked at everything.
+        unjudged = [episode for episode in episodes if "endpoint" not in episode]
+        if unjudged:
+            lines.append(
+                f"> **Partial L2 coverage.** {len(episodes) - len(unjudged)} of {len(episodes)} "
+                f"episodes were judged; the other {len(unjudged)} are scored on L1 alone. That is "
+                f"deliberate when judging only L1 passes — an L1 failure is already a failure and "
+                f"L2 would restate it — but it means `fixed_by_accident` and forbidden regressions "
+                f"were only looked for where L1 said pass."
+            )
+            lines.append("")
 
     # ---- the grid -------------------------------------------------------------------------
     grid: dict[str, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
