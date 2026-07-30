@@ -1,27 +1,19 @@
 # Instructions for Agents
 
-This is a local Docker Slurm cluster for testing and benchmark episodes. It
-models the scheduler interface and policies of a larger HPC system, but it is
-not a production cluster and must not be used for performance measurements.
+This document describes the computing center, its policies, and the
+information required to submit jobs safely and efficiently.
 
 ## About us
 
 ### Nodes
 
-- **Login Nodes:** `login` has a Docker limit of 1 CPU and 2 GiB memory. Use it
-  only for editing, light file management, scheduler inspection, and job
-  submission. The default local test identity is `demo_user`, but all guidance
-  in this document applies to the current logged-in user. In benchmark
-  episodes, the working directory is `/episode/work`.
-- **CPU Nodes:** `c1` and `c2` each have a Docker limit of 2 CPUs and 4 GiB
-  memory. Slurm advertises 128 CPUs and 3,800 MiB schedulable memory per node so
-  synthetic benchmark requests can be validated on a laptop.
-- **GPU Nodes:** `c3` has a Docker limit of 2 CPUs and 4 GiB memory. Slurm
-  advertises 64 CPUs, 3,800 MiB schedulable memory, and four GPU GRES. These
-  GPUs are scheduler-only stand-ins; there is no physical GPU or CUDA execution
-  environment.
+- **Login Nodes:** `login` has 1 CPU core and 2 GiB memory. Use it only for
+  editing, light file management, scheduler inspection, and job submission.
+- **CPU Nodes:** `c1` and `c2` each have 2 CPU cores and 4 GiB memory.
+- **GPU Nodes:** `c3` has 2 CPU cores, 4 GiB memory, and four schedulable GPU
+  resources.
 
-Inspect the scheduler's resource view with:
+Check the scheduler for current node availability:
 
 ```bash
 sinfo -N -o "%N CPUs=%c Memory=%m GRES=%G State=%t"
@@ -30,19 +22,18 @@ scontrol show partition
 
 ### File systems
 
-The login and compute nodes share disposable Docker volumes:
+The login and compute nodes share these file systems:
 
-| File system | Path | Intended use | Modeled allocation |
+| File system | Path | Intended use | Default allocation |
 |---|---|---|---|
 | Home | `/home/$USER` | Source, scripts, and small configuration files | 50 GB; backed up |
-| Tape archive | `/archive/$USER` | Long-term results; never active job I/O | 100 TB; backed up |
-| Scratch | `/scratch/$USER` | Job inputs, outputs, datasets, and temporary data | 20 TB; not backed up; 30-day purge policy |
-| Shared data | `/data` | General shared test data | No enforced quota |
-| Episode workspace | `/episode/work` | Files materialized for the current benchmark episode | Disposable |
+| Tape archive | `/archive/$USER` | Long-term retention of results; not active job I/O | 100 TB; backed up |
+| Scratch | `/scratch/$USER` | Job inputs, outputs, datasets, and temporary data | 20 TB; not backed up; files may be purged after 30 days |
+| Shared data | `/data` | Shared datasets and reference data | Contact the center administrator |
 
-Docker does not enforce the modeled quotas, backups, or purge timers. Fresh
-episodes remove their ordinary cluster volumes, so retained output must be
-collected by the host-side runner.
+Request allocation changes through the center administrator. Keep active job
+I/O on scratch, move completed results to the archive, and keep large datasets
+out of home.
 
 ### Environments
 
@@ -52,11 +43,10 @@ The login shell defines:
 DATA=/data
 SCRATCH=/scratch/$USER
 ARCHIVE=/archive/$USER
-EPISODE_WORK=/episode/work
 ```
 
-Use `module avail` to list modeled software and `module load <name>` to select
-it. Advertised modules are:
+List available software with `module avail` and load it with
+`module load <name>`. Available modules include:
 
 ```text
 python/3.11
@@ -67,32 +57,29 @@ cuda/12.4
 cudnn/9.1
 ```
 
-These module entries validate cluster-facing scripts but do not install
-alternate toolchains. Put Python virtual environments and package-manager
-caches under `/scratch/$USER`, not in home. Conda and Pixi are not installed;
-use the system Python or software already provided by the container.
+Put Python virtual environments and package-manager caches under
+`/scratch/$USER`, not in home. Conda and Pixi are not installed; use the
+system Python or an available module.
 
 ### Containers
 
-Docker, Podman, Apptainer, and Singularity are not available inside the login
-or compute nodes. Jobs run directly in disposable Rocky Linux containers. The
-agent user has no `sudo` access and cannot access the host Docker socket.
+Docker, Podman, Apptainer, and Singularity are not available on the login or
+compute nodes. Jobs run directly in the provided software environment. Users
+do not have `sudo` access.
 
 ### Other Software
 
-The cluster includes Rocky Linux 9, Slurm, Munge, OpenSSH, Git, GCC/G++, Make,
-Python 3, MariaDB clients, hwloc, Node.js, and Codex. Codex runs headlessly as
-the logged-in user on the login node; it is not installed on compute nodes.
-
-For runner, authentication, and qualification commands, see the
-[mock-cluster documentation](../src/mock_cluster/README.md).
+The center provides Rocky Linux 9, Slurm, Munge, OpenSSH, Git, GCC/G++, Make,
+Python 3, MariaDB clients, hwloc, and Node.js. Use `module avail` for the
+current software list and contact the center administrator for additional
+software.
 
 ## Running Jobs
 
 ### Scheduler
 
 The scheduler is Slurm. It uses backfill scheduling, consumable CPU and memory
-resources, cgroup enforcement, and MariaDB-backed accounting.
+resources, cgroup enforcement, and accounting.
 
 Common commands are:
 
@@ -104,47 +91,46 @@ sbatch job.sh
 scancel JOB_ID
 ```
 
-Submit compute through `sbatch`, not on the login node. For many similar tasks,
-use one job array such as `#SBATCH --array=1-100%10`; use
-`$SLURM_ARRAY_TASK_ID` to select each task's input. Do not repeatedly invoke
-`sbatch` or `srun` in a loop.
+Submit compute work with `sbatch`; never run it directly on a login node. For
+many similar tasks, use one job array such as
+`#SBATCH --array=1-100%10`, and use `$SLURM_ARRAY_TASK_ID` to select each
+task's input. Do not repeatedly invoke `sbatch` or `srun` in a loop.
 
 ### Queues
 
-In this mock cluster, Slurm partitions are the queues:
+Slurm partitions are the queues:
 
-| Queue | Nodes | Maximum nodes | Maximum time | GPU capacity | Charge factor |
+| Queue | Nodes | Maximum nodes | Maximum time | GPU capacity | QOS factor |
 |---|---|---:|---:|---:|---:|
 | `standard` (default) | `c1`, `c2` | 32 | 24 hours | None | 1× |
 | `extended` | `c1`, `c2` | 4 | 72 hours | None | 1.5× |
 | `accel` | `c3` | 8 | 20 hours | 4 per node | 4× |
 | `debug` | `c1`, `c2` | 2 | 30 minutes | None | 1× |
 
-Use `debug` for short checks. GPU requests must use `accel`; other queues
-cannot satisfy GPU GRES requests.
+Use `debug` for short checks. GPU requests must use `accel`; the other queues
+cannot satisfy GPU resource requests. Queue limits are policy ceilings; check
+`sinfo` for current availability.
 
 ### Charges
 
-This disposable cluster records accounting data but does not incur real
-charges. The default fixture models a 250,000 node-hour allocation, charged
-using the queue factors above. Every user must use their assigned allocation
-and account. Rejected jobs cost nothing; accepted jobs consume the modeled
-allocation for their runtime.
+Users have a fixed allocation of node-hours. Usage is charged according to
+runtime and the queue factors above. Rejected jobs cost nothing; accepted jobs
+consume the assigned allocation for their runtime. Contact the center
+administrator for the current balance or to request more allocation.
 
 ### Required user-specific information
 
 Every user must determine and use all of the following when constructing a
 job:
 
-- User: the current cluster identity (`$USER`); the mock default is
-  `demo_user`
-- Account: the account assigned to that user; the mock default is
-  `proj_astro`, and an account is required
+- User: the current cluster identity (`$USER`)
+- Account: the project account assigned to the user; `proj_astro` is available
+  on this cluster, and an account is required
 - Queue: choose from `standard`, `extended`, `accel`, or `debug`
 - Resources: request explicit nodes, tasks, CPUs per task, memory, and walltime
 - Output: write active job output under `/scratch/$USER`
 
-For the default mock account, a minimal batch script is:
+A minimal batch script is:
 
 ```bash
 #!/bin/bash
@@ -160,18 +146,14 @@ For the default mock account, a minimal batch script is:
 python3 task.py
 ```
 
+Replace the account and resource values with those assigned to the current
+user and job.
+
 ## Documentation
 
-This file is the agent-facing cluster guidance. Host-side deployment,
-authentication, automated episode, and qualification instructions are in the
-[mock-cluster README](../src/mock_cluster/README.md).
-
-The scheduler is the source of truth for live state:
-
-```bash
-sinfo
-scontrol show partition
-```
+The living center-specific documentation is available at
+`/agents/INSTRUCTIONS.md`. For scheduler command details, see the
+[official Slurm documentation](https://slurm.schedmd.com/documentation.html).
 
 ## Guardrails
 
