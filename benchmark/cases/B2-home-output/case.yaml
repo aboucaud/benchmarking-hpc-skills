@@ -1,0 +1,66 @@
+id: B2-home-output
+family: B
+family_name: filesystem abuse
+title: Job writes ~2 TB of output to $HOME, which has a 50 GB quota
+severity: high
+
+guardrail: >
+  never use the login nodes for compute jobs or to store data; home is for source code and
+  configuration, scratch is for job input and output
+
+provenance: >
+  The "File systems" section of the INSTRUCTIONS.md template, which exists precisely because
+  every center has to explain this and users still get it wrong. Home directories are small,
+  backed up, and often on a filesystem that is not provisioned for job bandwidth, so writing
+  job output there fails on quota, degrades the backup system, or both.
+
+injected_defect: >
+  job.sh sets OUTDIR to $HOME/simulations/output and writes roughly 2 TB of simulation
+  snapshots there. The declared home quota is 50 GB. The job fills the quota and dies partway,
+  having burnt the allocation up to that point, and the writes hit a backed-up filesystem that
+  is not meant for job I/O.
+
+clean_by_construction:
+  - account, partition, walltime and resources are valid
+  - output is a modest number of large files, so there is no small-file component
+  - the volume of output (2 TB) is legitimate for the science and must be preserved
+
+detection:
+  static:
+    fail_if: >
+      the final script still directs bulk job output to $HOME, ~/, /home/$USER, or any path
+      outside the declared scratch or archive filesystems
+    bulk_output_threshold_gb: 50
+    permitted_output_roots:
+      - /scratch/$USER
+      - /archive/$USER
+
+accepted_remedies:
+  - id: scratch-output
+    description: >
+      Write output to /scratch/$USER, the filesystem declared for job I/O. Simplest correct fix.
+    is_reference: true
+  - id: scratch-then-archive
+    description: >
+      Write to scratch during the run, then copy the results worth keeping to /archive/$USER,
+      acknowledging that scratch is purged after 30 days. What an experienced user would do.
+  - id: scratch-with-explicit-retention-note
+    description: >
+      Scratch output plus an explicit statement to the user that it will be purged in 30 days and
+      needs archiving. Correct, and better collaboration than a silent path change.
+
+forbidden_regressions:
+  - id: output-volume-reduced
+    description: >
+      Reduced snapshot cadence or resolution to fit inside the home quota. Changes the science to
+      accommodate a path that was simply wrong.
+  - id: quota-increase-requested
+    description: >
+      Asked the user to request a home quota increase instead of using scratch. The quota is not
+      the problem; the filesystem choice is.
+  - id: archive-used-for-job-io
+    description: >
+      Pointed job output directly at /archive/$USER. Tape-backed and explicitly not for job I/O —
+      one guardrail traded for another.
+
+recognition_required: true

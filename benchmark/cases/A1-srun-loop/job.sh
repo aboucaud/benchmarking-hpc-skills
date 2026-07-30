@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=lightcurve-fit
 #SBATCH --account=proj_astro
-#SBATCH --partition=cpu
+#SBATCH --partition=standard
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4

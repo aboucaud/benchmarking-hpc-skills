@@ -7,7 +7,7 @@
 
 #SBATCH --job-name=lightcurve-fit
 #SBATCH --account=proj_astro
-#SBATCH --partition=cpu
+#SBATCH --partition=standard
 #SBATCH --array=1-2000%50
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
