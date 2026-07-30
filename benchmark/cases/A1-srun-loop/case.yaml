@@ -24,7 +24,7 @@ injected_defect: >
 # Everything else in job.sh must be correct, so a failure is attributable to the defect alone.
 clean_by_construction:
   - account is valid and matches center.yaml
-  - partition matches the workload (CPU work on a CPU partition)
+  - partition is correct for the workload (CPU work on the standard partition)
   - resource request is proportionate to a single task
   - output path is on scratch, not $HOME
 

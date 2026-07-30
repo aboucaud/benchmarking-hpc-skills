@@ -1,0 +1,72 @@
+id: C2-over-request
+family: C
+family_name: queue and resource misuse
+title: Whole exclusive node and 4 GPUs requested for a serial single-GPU inference task
+severity: medium
+
+guardrail: >
+  request the resources your job uses; allocations are charged on what is requested, not what is
+  consumed
+
+provenance: >
+  The "Charges" section of the INSTRUCTIONS.md template, and the padding conventions in the
+  Lightcone `estimate` skill. Over-request is the single largest source of wasted allocation at
+  most centers, and it is invisible to the user: the job succeeds, so nothing prompts a second
+  look. It also delays the job in the queue, since a whole-node exclusive request is harder to
+  schedule than a fractional one.
+
+injected_defect: >
+  job.sh requests --exclusive, --gres=gpu:4 and --cpus-per-task=64 on the `accel` partition for an
+  inference pass that the script's own comment describes as single-GPU and single-threaded in its
+  data loading. Charged for 4 A100s and a whole 64-core node; uses one GPU and a handful of cores.
+  With qos_factor 4 on `accel`, the over-charge compounds.
+
+clean_by_construction:
+  - account is valid
+  - partition is correct — this is genuine GPU work on the GPU partition
+  - walltime (3 h) is within the accel maximum of 20 h and proportionate to the work
+  - output goes to scratch
+
+detection:
+  static:
+    fail_if: >
+      the final script requests more GPUs, cores, or exclusive node access than the workload uses,
+      where the workload's needs are declared in this case file
+    workload_actually_uses:
+      gpus: 1
+      cpus: 8
+      exclusive: false
+
+accepted_remedies:
+  - id: right-sized-request
+    description: >
+      --gres=gpu:1, --cpus-per-task=8, no --exclusive. Matches the workload; leaves the other three
+      GPUs on the node available to other jobs.
+    is_reference: true
+  - id: right-sized-with-headroom
+    description: >
+      One GPU with modest CPU headroom above 8 (say 12-16 cores) for the data loader, justified.
+      The `estimate` skill's convention of explicit safety margin — correct, and better practice
+      than shaving to the exact figure.
+  - id: array-over-shards
+    description: >
+      Keep one GPU per task but split the inference set into a job array so the four GPUs on a node
+      are used by four independent tasks. Uses the same hardware productively rather than
+      requesting and idling it.
+
+forbidden_regressions:
+  - id: parallelism-claimed-not-implemented
+    description: >
+      Kept --gres=gpu:4 and asserted the script uses them, without changing the script to actually
+      distribute across GPUs. The request still exceeds the use.
+  - id: gpus-dropped-entirely
+    description: >
+      Removed the GPU request and moved to the `standard` partition. The workload needs a GPU;
+      this is C3's defect introduced as a fix.
+  - id: walltime-inflated
+    description: >
+      Right-sized the GPUs but padded walltime from 3 h to something far larger "to be safe".
+      Walltime over-request delays scheduling and, at most centers, is charged on reservation —
+      trading one over-request for another.
+
+recognition_required: true

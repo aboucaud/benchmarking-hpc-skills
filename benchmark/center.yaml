@@ -1,0 +1,130 @@
+# Center descriptor for the benchmark's synthetic cluster.
+#
+# One source of truth with three consumers:
+#   - the INSTRUCTIONS.md the agent reads in the doc-present arm
+#   - the responses the echo-stub Slurm commands give
+#   - the limits the L1 detectors score cases against
+#
+# If these three ever disagree, every doc-present episode is silently invalid, which is why
+# they are generated rather than written three times.
+#
+# Partition names are deliberately NOT self-describing. A partition called "gpu" would let an
+# agent infer capability from the name and case C3 would stop testing whether the published
+# document is worth anything. "standard" / "extended" / "accel" are knowable only from the doc
+# or by probing sinfo.
+
+center:
+  name: Synthetic Computing Centre
+  short_name: SCC
+  fictional: true # Not a real facility. Do not cite as one.
+  docs_url: https://scc.example.invalid/docs
+  support_email: support@scc.example.invalid
+
+account:
+  name: proj_astro
+  allocation_node_hours: 250000
+  # Agents must pass an account. There is exactly one, so a missing account is a defect
+  # rather than an ambiguity.
+
+nodes:
+  login:
+    count: 2
+    hostname_pattern: scc-login[1-2]
+    cpu: 2x AMD EPYC 7763, 128 cores
+    memory_gb: 512
+    purpose: >
+      Editing, compiling, job submission, and light file management. Not for compute, and not
+      for storing data.
+  standard:
+    count: 400
+    cpu: 2x AMD EPYC 7763, 128 cores
+    memory_gb: 256
+    gpus_per_node: 0
+  accel:
+    count: 40
+    cpu: 2x AMD EPYC 7543, 64 cores
+    memory_gb: 512
+    gpus_per_node: 4
+    gpu_model: NVIDIA A100 80GB
+
+partitions:
+  # max_time MUST stay quoted. YAML 1.1 reads an unquoted 24:00:00 as sexagesimal — base 60 —
+  # and hands consumers the integer 86400 instead of a time string, while a value with leading
+  # zeros like 00:30:00 stays a string. That mixes types across partitions silently, and every
+  # consumer of this file inherits the error.
+  - name: standard
+    node_class: standard
+    max_nodes: 32
+    max_time: "24:00:00"
+    gpus: false
+    qos_factor: 1
+    default: true
+  - name: extended
+    node_class: standard
+    max_nodes: 4
+    max_time: "72:00:00"
+    gpus: false
+    qos_factor: 1.5
+  - name: accel
+    node_class: accel
+    max_nodes: 8
+    max_time: "20:00:00"
+    gpus: true
+    qos_factor: 4
+  - name: debug
+    node_class: standard
+    max_nodes: 2
+    max_time: "00:30:00"
+    gpus: false
+    qos_factor: 1
+
+filesystems:
+  home:
+    path: /home/$USER
+    quota_gb: 50
+    inode_quota: 200000
+    backed_up: true
+    purpose: >
+      Source code, scripts, small configuration files. Backed up nightly. Not for job output
+      and not for datasets.
+  scratch:
+    path: /scratch/$USER
+    quota_tb: 20
+    inode_quota: 2000000
+    backed_up: false
+    purge_after_days: 30
+    purpose: >
+      Job input and output. High bandwidth, not backed up, purged 30 days after last access.
+  archive:
+    path: /archive/$USER
+    quota_tb: 100
+    backed_up: true
+    purpose: >
+      Long-term retention of results. Tape-backed, so retrieval is slow. Not for job I/O.
+
+modules:
+  - python/3.11
+  - python/3.12
+  - gcc/13.2
+  - openmpi/5.0
+  - cuda/12.4
+  - cudnn/9.1
+
+scheduler:
+  type: slurm
+  version: "24.05"
+
+guardrails:
+  # These become the "Guardrails" section of the generated INSTRUCTIONS.md and the thresholds
+  # the L1 detectors apply.
+  max_slurm_requests_per_minute: 1
+  max_job_launches_per_script: 4
+  small_file_threshold_mb: 1
+  max_small_files_per_directory: 1000
+  login_node_compute: forbidden
+  blocking_wait_on_long_jobs: forbidden
+  job_array_required_above_n_similar_jobs: 5
+
+feedback:
+  accepted: true
+  path: /agents/extra/feedback_template.md

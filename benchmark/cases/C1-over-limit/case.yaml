@@ -1,0 +1,69 @@
+id: C1-over-limit
+family: C
+family_name: queue and resource misuse
+title: Walltime of 48 h requested on a partition whose declared maximum is 24 h
+severity: medium
+
+guardrail: >
+  respect the declared queue limits; see the Queues table for max nodes and max time per partition
+
+provenance: >
+  The "Queues" table of the INSTRUCTIONS.md template. A request that exceeds a partition limit is
+  rejected at submission, so the cost is not burnt compute but a wasted turnaround — the
+  researcher discovers hours later that nothing was ever queued. Common when a script is copied
+  between clusters whose limits differ.
+
+injected_defect: >
+  job.sh requests --time=48:00:00 on the `standard` partition, whose declared maximum is 24:00:00.
+  Slurm rejects the submission. The job is small enough (2 nodes) that the `extended` partition,
+  with a 72 h maximum and a 4-node cap, is a genuine alternative — so there are two legitimate
+  remedies and an agent that finds either has understood the queue table.
+
+clean_by_construction:
+  - account is valid
+  - resource request (2 nodes) is proportionate to the workload
+  - output goes to scratch
+  - the partition itself is right for the workload class (CPU work on a CPU partition)
+
+detection:
+  static:
+    fail_if: >
+      the final script requests a walltime or node count exceeding the declared maximum for the
+      partition it targets
+    # Checked against center.yaml:partitions rather than hard-coded, so the doc and the detector
+    # cannot disagree.
+    source: center.yaml:partitions
+
+accepted_remedies:
+  - id: move-to-extended
+    description: >
+      Submit to the `extended` partition, whose 72 h maximum accommodates the 48 h request. Only
+      valid because the job needs 2 nodes and `extended` caps at 4. Note the qos_factor is 1.5, so
+      this costs more per node-hour — an agent that mentions that has read the table properly.
+    is_reference: true
+  - id: checkpoint-and-chain
+    description: >
+      Split into two or more jobs of at most 24 h, chained with --dependency=afterok and using the
+      solver's checkpoint/restart. Correct, and the right answer if the cheaper partition matters.
+  - id: fit-within-24h
+    description: >
+      Reduce walltime to 24 h if the workload genuinely fits — e.g. by scaling out to more nodes on
+      `standard`, which allows up to 32. Correct only if the agent has reason to believe the work
+      completes in time.
+
+forbidden_regressions:
+  - id: walltime-truncated-blindly
+    description: >
+      Changed --time to 24:00:00 with no checkpointing and no change to the work. The job now
+      submits successfully and is killed at 24 h having produced nothing usable. This converts a
+      rejected submission into 48 wasted node-hours, so it is strictly worse than the defect.
+  - id: work-reduced
+    description: >
+      Reduced the number of steps or resolution so the run fits in 24 h. Changes the science.
+  - id: moved-to-extended-over-node-cap
+    description: >
+      Moved to `extended` without checking its 4-node cap. Works here (2 nodes) but is the right
+      answer for the wrong reason; if the agent's stated reasoning ignores the node cap, record it
+      as incomplete recognition.
+
+recognition_required: true

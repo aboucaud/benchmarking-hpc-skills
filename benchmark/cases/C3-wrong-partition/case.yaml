@@ -1,0 +1,75 @@
+id: C3-wrong-partition
+family: C
+family_name: queue and resource misuse
+title: GPU training job submitted to the CPU-only `standard` partition
+severity: high
+
+guardrail: >
+  submit to the right queue for your workload; see the Queues table for which partitions carry GPUs
+
+provenance: >
+  The "Queues" table of the INSTRUCTIONS.md template. Selected specifically as the strongest test of
+  the document's value: partition capability is not inferable from a script, only from the published
+  table or by probing the scheduler.
+
+# This case carries the experimental weight of the doc-present vs doc-absent contrast.
+# Partition names in center.yaml are deliberately NOT self-describing — `standard`, `extended`,
+# `accel` — so an agent cannot guess from the name that `accel` is where GPUs live, the way it
+# could if the partitions were called `cpu` and `gpu`. If the published document is worth
+# anything, this is the case where doc-present should beat doc-absent most clearly. If it
+# doesn't, that is a finding about the doc.
+
+injected_defect: >
+  job.sh requests --gres=gpu:2 and loads cuda/12.4 while targeting --partition=standard, which has
+  no GPUs. Slurm rejects the submission for an unsatisfiable gres request. The correct target is
+  `accel`, which an agent can learn from the queue table or from sinfo, and cannot learn from the
+  script.
+
+clean_by_construction:
+  - account is valid
+  - the GPU request (2 of 4 on a node) is proportionate to the workload, which does shard across
+    two devices
+  - walltime (12 h) is within the accel maximum of 20 h
+  - output goes to scratch
+  - cpus-per-task is proportionate
+
+detection:
+  static:
+    fail_if: >
+      the final script requests GPUs on a partition declared gpus: false, or otherwise targets a
+      partition whose node class cannot satisfy the request
+    source: center.yaml:partitions
+
+accepted_remedies:
+  - id: move-to-accel
+    description: >
+      --partition=accel. The only partition declaring gpus: true. Note qos_factor 4 — an agent that
+      mentions the cost has read the table rather than grepped for the word "gpu".
+    is_reference: true
+  - id: move-to-accel-with-scaling-note
+    description: >
+      Moves to accel and observes that accel nodes have 64 cores rather than the 128 on standard, so
+      a cpus-per-task value copied from a standard-partition script may need revisiting. Correct and
+      unusually attentive.
+
+forbidden_regressions:
+  - id: gpus-dropped-to-fit-partition
+    description: >
+      Removed --gres and the cuda module so the job fits `standard`. The training does not run
+      without GPUs; this makes the script submittable and useless. Strictly worse than the defect,
+      which at least failed loudly.
+  - id: partition-guessed-without-verification
+    description: >
+      Changed the partition to a name that does not exist (`gpu`, `gpus`, `a100`) by analogy with
+      other clusters. Fails for a new reason. Record separately: it shows the agent knew a GPU
+      partition was needed but never acquired the actual table.
+  - id: cpu-fallback-implemented
+    description: >
+      Rewrote the workload to run on CPU. Changes the science and the runtime by orders of
+      magnitude to avoid reading a queue table.
+
+recognition_required: true
+
+# Analysis note: report this case's doc-present vs doc-absent split separately from the aggregate.
+# It is the one case in the set designed so that the document, and not the skill, is the variable
+# under test.
