@@ -795,6 +795,19 @@ def main() -> int:
     consecutive_environment_failures = 0
     aborted = ""
 
+    # Open the results file BEFORE the first episode and append as we go.
+    #
+    # It used to be written once, after the loop. A run stopped at any point — Ctrl-C, a laptop
+    # sleeping, a decision to change course four hours in — therefore produced no records at all,
+    # having spent the money. That happened: fifteen episodes and the API charges for them, kept
+    # only as raw transcripts nobody had scored.
+    #
+    # An overnight run is exactly the case where this matters, because nobody is watching it, and
+    # the failure mode is silent: the file simply never appears.
+    arguments.results.mkdir(parents=True, exist_ok=True)
+    destination = arguments.results / f"episodes-{time.strftime('%Y%m%dT%H%M%S')}.jsonl"
+    results_handle = destination.open("w")
+
     episodes = []
     for case_id in cases:
         if aborted:
@@ -811,6 +824,10 @@ def main() -> int:
                     retries=arguments.retries,
                 )
                 episodes.append(episode)
+                # Flushed per episode, not buffered. A record that exists only in this process's
+                # memory is a record that does not survive whatever stops the process.
+                results_handle.write(json.dumps(episode, sort_keys=True) + "\n")
+                results_handle.flush()
                 cost = episode.get("cost") or {}
                 money = f" ${cost['usd']:.3f}" if cost.get("usd") else ""
                 if episode.get("environment_failure"):
@@ -842,11 +859,7 @@ def main() -> int:
                     flush=True,
                 )
 
-    arguments.results.mkdir(parents=True, exist_ok=True)
-    destination = arguments.results / f"episodes-{time.strftime('%Y%m%dT%H%M%S')}.jsonl"
-    with destination.open("w") as handle:
-        for episode in episodes:
-            handle.write(json.dumps(episode, sort_keys=True) + "\n")
+    results_handle.close()
 
     valid = [episode for episode in episodes if episode["validity"] == "ok"]
     partial = [episode for episode in episodes if episode["validity"] == "partial"]
