@@ -4,12 +4,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project status
 
-This repository is a **greenfield project** — at present it contains only a `LICENSE`
-file. There is no build system, source tree, or test suite yet. The sections below
-describe what this repo is *for* and what it will be built out of, so that whichever
-Claude instance starts adding code makes choices consistent with that plan rather than
-guessing. Once real code, configs, or CI lands, this file should be updated with actual
-build/lint/test commands and a description of the resulting architecture.
+The MVP misuse-repair benchmark has landed (PRs #4–#9). Code and data live under
+`benchmark/` (uv project); `mock-cluster/` is the Docker Slurm mock; design in
+`docs/mvp-misuse-benchmark.md` and `docs/prd.md`. NOTE: code lives in `benchmark/`,
+*not* `src/hpcbench/` — the deferred PR #2 proposes that split but it was not adopted.
+
+## Build / test / verify
+
+All commands run from the repo root through the `benchmark/` uv project (never global pip).
+The env ships `inspect-ai`+`pyyaml` but not `pytest`, so add it inline:
+
+- `uv run --with pyyaml benchmark/validate_cases.py` — case ↔ center.yaml consistency gate
+- `uv run --with pyyaml --with pytest pytest benchmark/stubs benchmark/harness benchmark/test_render.py -q` — tests
+- `uv run --with pyyaml benchmark/render.py check` — fail if `benchmark/generated/` is stale
+- Calibration (the end-to-end check): `benchmark/harness/episode.py all --runner scripted-asis` must give **0/9** and `--runner scripted-reference` **9/9** prevented
 
 ## Purpose
 
@@ -76,3 +84,6 @@ it can be dropped into an agent's skill set directly.
 - Do not hardcode credentials, TOTP seeds, hostnames, partitions, or account names for the
   demo cluster into source or commits; treat them the way `hpc-session` does — as
   per-deployment config the user supplies, not something to invent.
+- `benchmark/center.yaml` is the single source of truth for the synthetic cluster; the
+  files in `benchmark/generated/` are produced by `render.py write` — edit the descriptor,
+  never the generated output. `max_time` values must stay quoted (YAML 1.1 sexagesimal).
