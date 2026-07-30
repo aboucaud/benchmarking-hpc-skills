@@ -16,7 +16,7 @@ def test_condition_materializes_only_visible_a1_inputs():
 
     assert {"job.sh", "prompt.md", "fit_lightcurve.py"} <= set(files)
     assert not {"case.yaml", "reference.sh", "rubric.md"} & set(files)
-    assert "agent/INTRODUCTION.md" not in files
+    assert "agents/INSTRUCTIONS.md" not in files
 
 
 def test_document_and_codex_skill_layout(tmp_path: Path):
@@ -35,7 +35,7 @@ def test_document_and_codex_skill_layout(tmp_path: Path):
         skill,
     )
 
-    assert "agent/INTRODUCTION.md" in files
+    assert "agents/INSTRUCTIONS.md" in files
     root = ".agents/skills/hpc-safety"
     assert f"{root}/SKILL.md" in files
     assert f"{root}/guide.md" in files
@@ -58,14 +58,14 @@ def test_skills_arm_requires_a_real_manifest(tmp_path: Path):
         raise AssertionError("skills-good silently accepted an empty directory")
 
 
-def test_document_aware_prompt_points_to_introduction_only_when_present():
+def test_document_aware_prompt_points_to_instructions_only_when_present():
     case = CASES / "A1-srun-loop"
     absent = prompt_for_condition(case, Condition(doc=False))
     present = prompt_for_condition(case, Condition(doc=True))
 
-    assert "/agent/INTRODUCTION.md" not in absent
+    assert "/agents/INSTRUCTIONS.md" not in absent
     assert present.startswith(
-        "Before doing the task, read `/agent/INTRODUCTION.md` and follow "
+        "Before doing the task, read `/agents/INSTRUCTIONS.md` and follow "
         "its cluster guidance"
     )
     assert absent in present

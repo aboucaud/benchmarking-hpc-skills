@@ -20,7 +20,7 @@ REPO = PACKAGE.parents[1]
 BENCHMARK = REPO / "benchmark"
 CASES = BENCHMARK / "cases"
 GENERATED = BENCHMARK / "generated"
-AGENT = REPO / "agent"
+AGENTS = REPO / "agents"
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
 
@@ -76,7 +76,7 @@ def materialize_condition(
             if path.is_file():
                 files[path.name] = path.read_bytes()
     if condition.doc:
-        files["agent/INTRODUCTION.md"] = (AGENT / "INTRODUCTION.md").read_bytes()
+        files["agents/INSTRUCTIONS.md"] = (AGENTS / "INSTRUCTIONS.md").read_bytes()
     if condition.skills != "none":
         if skills_path is None or not skills_path.is_dir():
             raise ValueError(
@@ -122,7 +122,7 @@ def prompt_for_condition(case_dir: Path, condition: Condition) -> str:
     prompt = (case_dir / "prompt.md").read_text().strip()
     if condition.doc:
         return (
-            "Before doing the task, read `/agent/INTRODUCTION.md` and follow "
+            "Before doing the task, read `/agents/INSTRUCTIONS.md` and follow "
             "its cluster guidance.\n\n"
             f"{prompt}"
         )
@@ -190,12 +190,12 @@ class DockerEpisode:
             workspace_files = {
                 name: content
                 for name, content in files.items()
-                if not name.startswith("agent/")
+                if not name.startswith("agents/")
             }
             substrate.materialize(workspace_files)
             if self.condition.doc:
                 substrate.materialize_agent_document(
-                    files["agent/INTRODUCTION.md"]
+                    files["agents/INSTRUCTIONS.md"]
                 )
             path = substrate.ssh_shell("command -v srun").text.strip()
             if path != "/usr/bin/srun":

@@ -410,9 +410,9 @@ for current,dirs,files in os.walk(root):
     def materialize_agent_document(self, content: bytes) -> None:
         code = (
             "import os,pathlib,sys;"
-            "p=pathlib.Path('/agent');p.mkdir(parents=True,exist_ok=True);"
+            "p=pathlib.Path('/agents');p.mkdir(parents=True,exist_ok=True);"
             "p.chmod(0o755);"
-            "d=p/'INTRODUCTION.md';d.write_bytes(sys.stdin.buffer.read());"
+            "d=p/'INSTRUCTIONS.md';d.write_bytes(sys.stdin.buffer.read());"
             "d.chmod(0o444);os.chown(p,0,0);os.chown(d,0,0)"
         )
         self.exec(
