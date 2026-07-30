@@ -153,15 +153,19 @@ version, or host SSH port:
 cp .env.example .env
 ```
 
-From the repository root, `benchmark/render.py` builds `slurm.conf`,
-`gres.conf`, documentation, and detector limits from one descriptor.
-Regenerate and verify them with:
+From the repository root, `src/hpcbench/render.py` regenerates the MVP
+documentation and detector artifacts from `benchmark/center.yaml`. It also
+checks this Docker configuration for scheduler drift:
 
 ```bash
-uv run --with pyyaml benchmark/render.py write
-uv run --with pyyaml benchmark/render.py check
-uv run --with pyyaml benchmark/render.py drift
+uv run --with pyyaml src/hpcbench/render.py write
+uv run --with pyyaml src/hpcbench/render.py check
+uv run --with pyyaml src/hpcbench/render.py drift
 ```
+
+The renderer does not rewrite the Docker files. If the center descriptor
+changes, update the mock-cluster snapshots deliberately and use `drift` to
+verify their scheduler invariants.
 
 The generated partitions are:
 

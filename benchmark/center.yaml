@@ -131,10 +131,7 @@ modules:
 
 scheduler:
   type: slurm
-  version: "25.11.2"
-  # A1's reference remedy uses indices 1-2000. Slurm's highest valid index is
-  # MaxArraySize - 1, so this must be at least 2001 on every fidelity substrate.
-  max_array_size: 2001
+  version: "24.05"
 
 guardrails:
   # These become the "Guardrails" section of the generated INSTRUCTIONS.md and the thresholds

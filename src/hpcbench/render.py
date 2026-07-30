@@ -55,12 +55,7 @@ if __package__ in (None, ""):  # invoked as a script rather than imported
 
 from hpcbench.paths import BENCHMARK, CENTER, GENERATED, REPO  # noqa: E402
 
-MOCK_CLUSTER = REPO / "mock-cluster"
-MOCK_BASE_CONF = MOCK_CLUSTER / "slurm-base.conf"
-MOCK_CONF = MOCK_CLUSTER / "slurm.conf"
-MOCK_GRES_CONF = MOCK_CLUSTER / "gres.conf"
-MOCK_MODULES = MOCK_CLUSTER / "modules.txt"
-FAKE_GPU_FILES = ("/dev/null", "/dev/zero", "/dev/full", "/dev/random")
+MOCK_CONF = REPO / "mock-cluster" / "slurm.conf"
 
 BANNER = "Generated from benchmark/center.yaml (schema_version {version}). Do not edit by hand"
 
@@ -405,7 +400,9 @@ def render_slurm_conf(
         "# nothing in this benchmark computes, so a request must be accepted or rejected for the",
         "# reason the case is about and not because a laptop is small.",
         "#",
-        f"# Assumes {total} compute containers. The GPU node has to be separate:",
+        f"# Assumes {total} compute containers. The cluster on main has two, so adopting this",
+        "# needs a c3 service in compose.yaml (a copy of the c2 block). The GPU node has to be",
+        "# separate:",
         "# GRES on a shared node would let a GPU request succeed on `standard` and delete case C3.",
         "",
         "GresTypes=gpu",
@@ -460,44 +457,8 @@ def render_gres_conf(center: dict, nodes_per_class: dict[str, int] | None = None
         if not node.get("gpus_per_node"):
             continue
         hosts = f"c[{first}-{last}]" if count > 1 else f"c{first}"
-        gpu_count = node["gpus_per_node"]
-        if gpu_count > len(FAKE_GPU_FILES):
-            raise SystemExit(
-                f"mock cluster needs {gpu_count} fake GPU device paths, "
-                f"but only {len(FAKE_GPU_FILES)} are declared"
-            )
-        for device in FAKE_GPU_FILES[:gpu_count]:
-            lines.append(
-                f"NodeName={hosts} AutoDetect=off Name=gpu "
-                f"File={device} Flags=CountOnly"
-            )
+        lines.append(f"NodeName={hosts} Name=gpu Count={node['gpus_per_node']}")
     return "\n".join(lines) + "\n"
-
-
-def render_docker_slurm_conf(center: dict) -> str:
-    """The complete slurm.conf copied into the Docker image.
-
-    The daemon plumbing is deliberately kept in a small static base file. Everything a
-    benchmark case can turn on is appended from center.yaml, so the cluster cannot acquire a
-    second hand-written set of partitions or resources.
-    """
-    base = MOCK_BASE_CONF.read_text().rstrip()
-    generated = render_slurm_conf(center).rstrip()
-    return "\n".join([
-        f"# {BANNER.format(version=center['schema_version'])}:",
-        "#   uv run --with pyyaml benchmark/render.py write",
-        "#",
-        "# Complete Docker configuration: static daemon plumbing followed by the",
-        "# center.yaml-derived scheduler facts.",
-        "",
-        base,
-        "",
-        "# The A1 reference uses array index 2000; the maximum index is MaxArraySize - 1.",
-        f"MaxArraySize={center['scheduler']['max_array_size']}",
-        "",
-        generated,
-        "",
-    ])
 
 
 # ------------------------------------------------------------------------------------------
@@ -632,9 +593,6 @@ def artefacts(center: dict) -> dict[Path, str]:
         GENERATED / "detectors.json": json.dumps(render_detectors(center), indent=2) + "\n",
         GENERATED / "mock-cluster.conf": render_slurm_conf(center),
         GENERATED / "mock-cluster-gres.conf": render_gres_conf(center),
-        MOCK_CONF: render_docker_slurm_conf(center),
-        MOCK_GRES_CONF: render_gres_conf(center),
-        MOCK_MODULES: "\n".join(center["modules"]) + "\n",
     }
 
 

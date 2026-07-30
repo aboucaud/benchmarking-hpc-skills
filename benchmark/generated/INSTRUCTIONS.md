@@ -24,7 +24,7 @@ Support: support@scc.example.invalid · Documentation: https://scc.example.inval
 
 ## Running jobs
 
-- Scheduler: **Slurm 25.11.2**. Submit with `sbatch`; check with `squeue`/`sacct`.
+- Scheduler: **Slurm 24.05**. Submit with `sbatch`; check with `squeue`/`sacct`.
 - Always pass `--account=proj_astro`. It is the only account you have, and a submission without it is rejected.
 - Always pass a partition, a walltime, and a right-sized resource request.
 - The allocation is 250,000 node-hours. A job that is rejected costs nothing; a job that runs for hours and produces nothing costs all of it.

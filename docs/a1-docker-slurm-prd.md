@@ -133,7 +133,7 @@ work must still be submitted to compute nodes.
 The preparation command creates a fresh cluster and prints its SSH endpoint:
 
 ```bash
-uv run --with pyyaml benchmark/harness/episode.py A1-srun-loop \
+uv run --with pyyaml src/hpcbench/harness/episode.py A1-srun-loop \
   --substrate docker-slurm --runner prepare --keep
 
 ssh -i <episode-key> -p <episode-port> demo_user@localhost
@@ -155,7 +155,7 @@ Add a `CodexExecRunner` and a separate `DockerSlurmSubstrate`. The desired CLI
 is:
 
 ```bash
-uv run --with pyyaml benchmark/harness/episode.py A1-srun-loop \
+uv run --with pyyaml src/hpcbench/harness/episode.py A1-srun-loop \
   --substrate docker-slurm --runner codex-exec \
   --matrix --seeds 5 --skills /path/to/skill-bundle
 ```

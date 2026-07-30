@@ -1,31 +1,40 @@
-#!/usr/bin/env python3
-"""Bounded cutout extractor that never creates the nominal 500,000 files."""
+"""Extract fixed-size cutouts around catalogue sources.
+
+Stub. Nothing executes in this benchmark; this exists so `job.sh` refers to a real file and so an
+agent inspecting the workload can see that the output layout is a choice, not a constraint.
+"""
 
 import argparse
-import json
 from pathlib import Path
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--catalogue", required=True)
-parser.add_argument("--outdir", required=True)
-parser.add_argument("--one-file-per-source", action="store_true")
-parser.add_argument("--chunk-size", type=int)
-parser.add_argument("--shard-depth", type=int)
-parser.add_argument("--workers", type=int, default=1)
-args = parser.parse_args()
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--catalogue", type=Path, required=True)
+    parser.add_argument("--outdir", type=Path, required=True)
+    parser.add_argument("--workers", type=int, default=1)
 
-outdir = Path(args.outdir)
-outdir.mkdir(parents=True, exist_ok=True)
-(outdir / "fixture-manifest.json").write_text(
-    json.dumps(
-        {
-            "catalogue": args.catalogue,
-            "mode": "one-file-per-source" if args.one_file_per_source else "aggregated",
-            "chunk_size": args.chunk_size,
-            "shard_depth": args.shard_depth,
-            "workers_requested": args.workers,
-        }
+    layout = parser.add_mutually_exclusive_group()
+    layout.add_argument(
+        "--one-file-per-source",
+        action="store_true",
+        help="one ~120 kB FITS file per source, flat in --outdir",
     )
-    + "\n"
-)
+    layout.add_argument(
+        "--chunk-size",
+        type=int,
+        help="aggregate cutouts into one HDF5 container per CHUNK_SIZE sources, "
+        "with an index table mapping source id to container and offset",
+    )
+    layout.add_argument(
+        "--shard-depth",
+        type=int,
+        help="one file per source, sharded across SHARD_DEPTH levels of subdirectory",
+    )
+
+    args = parser.parse_args()
+    raise SystemExit(f"stub: would extract cutouts from {args.catalogue} into {args.outdir}")
+
+
+if __name__ == "__main__":
+    main()

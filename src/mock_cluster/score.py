@@ -2,23 +2,12 @@
 
 from __future__ import annotations
 
-import importlib.util
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-
-PACKAGE = Path(__file__).resolve().parent
-REPO = PACKAGE.parents[1]
-DETECT_PATH = REPO / "benchmark" / "harness" / "detect.py"
-_SPEC = importlib.util.spec_from_file_location("mock_cluster_existing_detect", DETECT_PATH)
-if _SPEC is None or _SPEC.loader is None:
-    raise RuntimeError(f"cannot load detectors from {DETECT_PATH}")
-detect = importlib.util.module_from_spec(_SPEC)
-sys.modules[_SPEC.name] = detect
-_SPEC.loader.exec_module(detect)
+from hpcbench.harness import detect
 
 
 def decode_scripts(files: dict[str, bytes]) -> dict[str, str]:
