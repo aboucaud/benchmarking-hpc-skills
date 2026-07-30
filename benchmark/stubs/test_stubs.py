@@ -603,3 +603,82 @@ def test_test_only_still_reports_a_rejection(sandbox):
     assert result.returncode == 1
     assert "Requested time limit is invalid" in result.stderr
     assert json.loads((sandbox.runtime / "state.json").read_text())["jobs"] == {}
+
+
+# ------------------------------------------------------------------------------------------
+# The substrate must not punish correct behaviour
+#
+# Every bug found by running this benchmark against a live agent has been of one kind: the sandbox
+# telling an agent something untrue, and the untruth landing on an agent that was doing the right
+# thing. `mkdir: /scratch: Read-only file system` to an agent preparing its output directory.
+# "Submitted batch job 1000" to one that asked for a dry run. A default `sinfo` table to one that
+# asked for the GRES column. Each would have surfaced as a finding about agents.
+#
+# So the careful-user walkthrough below is a regression suite for that whole class. Anything a
+# competent HPC user would type has to work, and a failure here is a substrate lie by definition.
+# ------------------------------------------------------------------------------------------
+
+
+def test_a_careful_user_walkthrough_never_hits_a_lie(sandbox):
+    """Everything a competent user does before, during and after a submission."""
+    (sandbox.work / "job.sh").write_text(batch(time="12:00:00"))
+
+    # Find out what the cluster offers, before writing anything.
+    for probe in (
+        ["sinfo"],
+        ["sinfo", "-o", "%P %N %c %m %G"],
+        ["scontrol", "show", "partition", "standard"],
+        ["scontrol", "show", "config"],
+        ["quota"],
+        ["module", "avail"],
+        ["module", "list"],
+        ["module", "load", "python/3.11"],
+        ["sacctmgr", "show", "assoc"],
+    ):
+        result = sandbox.run(*probe)
+        assert result.returncode == 0, f"{' '.join(probe)} → {result.stderr}"
+
+    # Prepare the output directory on the cluster filesystem.
+    assert sandbox.run("mkdir", "-p", "/scratch/demo_user/run").returncode == 0
+
+    # Validate before submitting, then submit.
+    dry = sandbox.run("sbatch", "--test-only", "job.sh")
+    assert dry.returncode == 0 and "Submitted" not in dry.stdout
+
+    submitted = sandbox.run("sbatch", "--parsable", "job.sh")
+    assert submitted.returncode == 0
+    job_id = submitted.stdout.strip()
+
+    # Check on it the several ways people do.
+    for probe in (
+        ["squeue"],
+        ["squeue", "--me"],
+        ["squeue", "-j", job_id],
+        ["squeue", "-j", job_id, "-h", "-o", "%T"],
+        ["scontrol", "show", "job", job_id],
+        ["sacct", "-j", job_id],
+        ["sacct", "-X", "-j", job_id, "--format=JobID,State"],
+    ):
+        result = sandbox.run(*probe)
+        assert result.returncode == 0, f"{' '.join(probe)} → {result.stderr}"
+
+    # And clean up.
+    assert sandbox.run("scancel", job_id).returncode == 0
+
+
+def test_every_command_the_detectors_know_about_is_shimmed():
+    """The two layers must agree on what exists.
+
+    `sstat` was counted by the detectors as a controller query and polling command while not being
+    shimmed at all — so it could never appear in a call log, and on a real login node it would have
+    reached the real thing. That is the same reasoning that put `sacctmgr` in the shim list.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(HERE.parent / "harness"))
+    import detect  # noqa: PLC0415
+
+    unshimmed = sorted(set(detect.SLURM_COMMANDS) - set(install_stubs.SHIMMED))
+    assert not unshimmed, (
+        f"the detectors count these as controller calls but nothing shims them: {unshimmed}"
+    )

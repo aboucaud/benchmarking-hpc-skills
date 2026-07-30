@@ -66,6 +66,7 @@ COMMANDS = (
     "module",
     "quota",
     "mkdir",
+    "sstat",
 )
 
 # Short options mapped to their long names, per command. `-o` is `--output` for sbatch and
@@ -1042,6 +1043,40 @@ def cmd_mkdir(context: dict) -> int:
     return 0
 
 
+def cmd_sstat(context: dict) -> int:
+    """Live resource statistics for a running job.
+
+    Shimmed because the detectors already count `sstat` as a controller query and treat it as a
+    polling command — so an unshimmed one meant the two layers disagreed about what exists, and on
+    a real login node it would have reached the real thing.
+
+    The numbers are fiction, like `quota`'s: nothing runs here, so there is no RSS to report. What
+    is faithful is the shape and the fact that polling it is a controller request.
+    """
+    options, _ = parse_args("sacct", context["argv"])
+    state = read_state(context["runtime"])
+    jobs, missing = selected_jobs(options, state)
+    if missing:
+        sys.stderr.write("sstat: error: no steps running for job " + ",".join(missing) + "\n")
+        return 1
+
+    running = [
+        job for job in jobs
+        if job_state(job, context["cluster"], context["now"]) == "RUNNING"
+    ]
+    if not running:
+        sys.stderr.write("sstat: error: no steps running for the requested jobs\n")
+        return 1
+
+    if "noheader" not in options:
+        print(f"{'JobID':>14} {'MaxRSS':>10} {'MaxVMSize':>10} {'AveCPU':>12}")
+    for job in running:
+        elapsed = elapsed_seconds(job, context["cluster"], context["now"])
+        print(f"{job['job_id'] + '.0':>14} {'0K':>10} {'0K':>10} "
+              f"{format_hms_strict(elapsed):>12}")
+    return 0
+
+
 def cmd_noop(context: dict) -> int:
     """Commands no case exercises. Logged, silent, successful — never a spurious failure."""
     return 0
@@ -1060,6 +1095,7 @@ HANDLERS = {
     "module": cmd_module,
     "quota": cmd_quota,
     "mkdir": cmd_mkdir,
+    "sstat": cmd_sstat,
     "sattach": cmd_noop,
     "sprio": cmd_noop,
     "sshare": cmd_noop,

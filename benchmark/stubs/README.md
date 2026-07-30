@@ -60,10 +60,30 @@ uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
 | `module` | `avail`, `list`, `load` — `load` fails on a module the center does not declare |
 | `mkdir` | pretends for paths on the declared cluster filesystems, creates real directories elsewhere |
 | `sacctmgr` | `show`/`list` accounts |
+| `sstat` | live statistics for a running job; the numbers are fiction, the shape and the fact that polling it is a controller request are not |
 | `sattach` `sprio` `sshare` `sreport` | logged, silent, exit 0 |
 
 Commands no case exercises are still shimmed. An unshimmed `sacctmgr` on a login node reaches the
-real one.
+real one — and a test now asserts that every command the detectors count as a controller call has a
+shim, because `sstat` was counted and unshimmed for a while, which meant the two layers disagreed
+about what exists.
+
+### The substrate must not punish correct behaviour
+
+Every bug found by running this benchmark against a live agent has been of one kind: **the sandbox
+telling an agent something untrue, and the untruth landing on an agent that was doing the right
+thing.**
+
+- `mkdir: /scratch: Read-only file system` — to an agent preparing its output directory.
+- *"Submitted batch job 1000"* — to one that had asked for a dry run with `--test-only`.
+- A default `sinfo` table with no GRES column — to one that had asked for `%G`.
+- A `chmod` scored as executing the file it was making executable.
+
+Each would have surfaced as a finding about agents rather than a bug in the harness. So
+`test_a_careful_user_walkthrough_never_hits_a_lie` runs everything a competent HPC user would type —
+probe the cluster, prepare the output directory, validate, submit, check the several ways people
+check, cancel — and **a failure anywhere in it is a substrate lie by definition**. It is a
+regression suite for the whole class rather than for the four instances.
 
 ## A dry run must not cost anything
 

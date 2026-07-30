@@ -47,7 +47,7 @@ CENTER = HERE.parent / "center.yaml"
 # an unshimmed `sacctmgr` on a login node would reach the real one.
 SHIMMED = (
     "sbatch", "squeue", "sacct", "sacctmgr", "scancel", "scontrol", "sinfo", "srun", "salloc",
-    "sattach", "sprio", "sshare", "sreport", "module", "quota", "mkdir",
+    "sattach", "sprio", "sshare", "sreport", "module", "quota", "mkdir", "sstat",
 )
 
 WRAPPER = """#!/bin/sh
