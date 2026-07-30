@@ -20,7 +20,7 @@ recorded. `srun` was called 2000 times, or it wasn't.
 ## Usage
 
 ```bash
-uv run --with pyyaml benchmark/stubs/install_stubs.py /path/to/sandbox --episode ep-0001
+uv run --with pyyaml src/hpcbench/stubs/install_stubs.py /path/to/sandbox --episode ep-0001
 ```
 
 Prints the environment to run the episode under, and builds:
@@ -41,7 +41,7 @@ gain a spurious way to pass.
 Tests:
 
 ```bash
-uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
+uv run --with pyyaml --with pytest pytest tests/test_stubs.py -q
 ```
 
 ## What each shim does

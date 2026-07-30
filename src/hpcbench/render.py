@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Render every consumer of center.yaml, and report where a substrate has drifted from it.
 
-    uv run --with pyyaml benchmark/render.py write     # regenerate benchmark/generated/
-    uv run --with pyyaml benchmark/render.py check     # fail if the committed output is stale
-    uv run --with pyyaml benchmark/render.py drift     # compare against mock-cluster/slurm.conf
+    uv run --with pyyaml src/hpcbench/render.py write     # regenerate benchmark/generated/
+    uv run --with pyyaml src/hpcbench/render.py check     # fail if the committed output is stale
+    uv run --with pyyaml src/hpcbench/render.py drift     # compare against mock-cluster/slurm.conf
 
 `center.yaml` claims to be an executable spec rather than a document. This is the file that makes
 the claim testable: four consumers, all generated from it, none of them written twice.
@@ -47,10 +47,12 @@ from pathlib import Path
 
 import yaml
 
-BENCHMARK = Path(__file__).resolve().parent
-CENTER = BENCHMARK / "center.yaml"
-GENERATED = BENCHMARK / "generated"
-MOCK_CONF = BENCHMARK.parent / "mock-cluster" / "slurm.conf"
+if __package__ in (None, ""):  # invoked as a script rather than imported
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from hpcbench.paths import BENCHMARK, CENTER, GENERATED, REPO  # noqa: E402
+
+MOCK_CONF = REPO / "mock-cluster" / "slurm.conf"
 
 BANNER = "Generated from benchmark/center.yaml (schema_version {version}). Do not edit by hand"
 
@@ -385,7 +387,7 @@ def render_slurm_conf(
     total = sum(counts.get(name, 1) for name in center["nodes"] if name != "login")
     lines = [
         f"# {BANNER.format(version=center['schema_version'])}:",
-        "#   uv run --with pyyaml benchmark/render.py write",
+        "#   uv run --with pyyaml src/hpcbench/render.py write",
         "#",
         "# Node and partition definitions for mock-cluster/, carrying the facts every case turns",
         "# on: partition names, walltime and node ceilings, which partition has GPUs, the default",
@@ -436,7 +438,7 @@ def render_gres_conf(center: dict, nodes_per_class: dict[str, int] | None = None
     counts = nodes_per_class or DOCKER_NODES_PER_CLASS
     lines = [
         f"# {BANNER.format(version=center['schema_version'])}:",
-        "#   uv run --with pyyaml benchmark/render.py write",
+        "#   uv run --with pyyaml src/hpcbench/render.py write",
         "#",
         "# GRES with no device behind it. Enough for the scheduler to accept or reject a GPU",
         "# request, which is what cases C2 and C3 are about.",
@@ -623,7 +625,7 @@ def command_check(center: dict) -> int:
         print("\ncenter.yaml and its generated consumers disagree:\n")
         for item in stale:
             print(item)
-        print("\nRun: uv run --with pyyaml benchmark/render.py write")
+        print("\nRun: uv run --with pyyaml src/hpcbench/render.py write")
         return 1
     return 0
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Tests for the echo-stub Slurm commands.
 
-    uv run --with pyyaml --with pytest pytest benchmark/stubs/test_stubs.py -q
+    uv run --with pyyaml --with pytest pytest tests/test_stubs.py -q
 
 Folds into the repo's normal `uv run pytest` once the toolchain in PR #2 lands on main; until
-then it stands alone, like benchmark/validate_cases.py.
+then it stands alone, like src/hpcbench/validate_cases.py.
 
 The tests worth reading before the rest are the ones covering claims the benchmark's results
 depend on, rather than the ones covering output formatting:
@@ -31,12 +31,11 @@ from pathlib import Path
 
 import pytest
 
-HERE = Path(__file__).resolve().parent
-CASES = HERE.parent / "cases"
-sys.path.insert(0, str(HERE))
+from hpcbench.paths import CASES  # noqa: E402
+from hpcbench.stubs import install_stubs  # noqa: E402
+from hpcbench.stubs import slurm_stub  # noqa: E402
 
-import install_stubs  # noqa: E402
-import slurm_stub  # noqa: E402
+HERE = Path(install_stubs.__file__).resolve().parent
 
 
 @pytest.fixture
@@ -537,10 +536,15 @@ def test_case_a2_driver_records_a_poll_storm(sandbox):
     (sandbox.work / "run_campaign.sh").write_text((case / "job.sh").read_text())
 
     # Timing out is the expected outcome: the loop never stops waiting.
+    #
+    # The window is generous because every shimmed `squeue` is a python process, so the number of
+    # polls achieved in a fixed wall-clock window depends on how loaded the machine is. Under
+    # `-n auto` this test shares a laptop with a dozen others and a tight window makes it flake —
+    # which would be a test measuring contention, not a poll storm.
     with contextlib.suppress(subprocess.TimeoutExpired):
         subprocess.run(
             ["bash", "run_campaign.sh"], capture_output=True, text=True,
-            env=sandbox.env, cwd=sandbox.work, timeout=12, check=False,
+            env=sandbox.env, cwd=sandbox.work, timeout=25, check=False,
         )
 
     polls = [record for record in sandbox.calls() if record["command"] == "squeue"]
@@ -673,10 +677,7 @@ def test_every_command_the_detectors_know_about_is_shimmed():
     shimmed at all — so it could never appear in a call log, and on a real login node it would have
     reached the real thing. That is the same reasoning that put `sacctmgr` in the shim list.
     """
-    import sys as _sys
-
-    _sys.path.insert(0, str(HERE.parent / "harness"))
-    import detect  # noqa: PLC0415
+    from hpcbench.harness import detect  # noqa: PLC0415
 
     unshimmed = sorted(set(detect.SLURM_COMMANDS) - set(install_stubs.SHIMMED))
     assert not unshimmed, (

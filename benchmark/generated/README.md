@@ -3,7 +3,7 @@
 Everything else in this directory is generated. Do not hand-edit it — regenerate:
 
 ```bash
-uv run --with pyyaml benchmark/render.py write
+uv run --with pyyaml src/hpcbench/render.py write
 ```
 
 Committed rather than built on demand, so a reviewer can read the document an agent was actually
@@ -61,7 +61,7 @@ schedules against the declared count, nothing here computes, and a request shoul
 rejected for the reason the case is about rather than because a laptop is small.
 
 ```bash
-uv run --with pyyaml benchmark/render.py drift
+uv run --with pyyaml src/hpcbench/render.py drift
 ```
 
 compares the invariants against `mock-cluster/slurm.conf` and reports which cases the Docker

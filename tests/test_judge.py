@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the L2/L3 judge plumbing. No model is invoked.
 
-    uv run --with pyyaml --with pytest pytest benchmark/harness/test_judge.py -q
+    uv run --with pyyaml --with pytest pytest tests/test_judge.py -q
 
 Everything here is the machinery around the LLM call: prompt assembly, reply parsing, disagreement
 handling, and the endpoint combination. The judgement itself cannot be unit-tested, which is exactly
@@ -16,11 +16,8 @@ from pathlib import Path
 
 import pytest
 
-HARNESS = Path(__file__).resolve().parent
-BENCHMARK = HARNESS.parent
-sys.path.insert(0, str(HARNESS))
-
-import judge  # noqa: E402
+from hpcbench.harness import judge  # noqa: E402
+from hpcbench.paths import BENCHMARK  # noqa: E402
 
 CASES = sorted(path.name for path in (BENCHMARK / "cases").iterdir() if path.is_dir())
 
@@ -319,7 +316,7 @@ def test_report_shows_the_grid_before_the_aggregate():
     At nine cases and one seed a single percentage is the least informative thing the data can
     produce and the most quotable, so the grid comes first and the aggregate last.
     """
-    import report
+    from hpcbench.harness import report
 
     episodes = [
         {"case": "C3-wrong-partition", "condition": {"label": "doc-absent_skills-none"},
@@ -343,7 +340,7 @@ def test_report_shows_the_grid_before_the_aggregate():
 
 
 def test_report_warns_when_judge_and_subject_are_the_same_model():
-    import report
+    from hpcbench.harness import report
 
     same = [{
         "case": "C1-over-limit", "condition": {"label": "doc-absent_skills-none"},
@@ -357,7 +354,7 @@ def test_report_warns_when_judge_and_subject_are_the_same_model():
 
 
 def test_report_flags_unjudged_records_as_not_the_headline():
-    import report
+    from hpcbench.harness import report
 
     unjudged = [{
         "case": "C1-over-limit", "condition": {"label": "doc-absent_skills-none"},
@@ -398,7 +395,7 @@ def test_layers_still_disagree_when_there_is_no_regression():
 
 def test_multi_seed_cells_collapse_to_a_fraction_and_flag_instability():
     """At one seed per cell an outcome and a coin flip look identical."""
-    import report
+    from hpcbench.harness import report
 
     def episode(case, passed, seed):
         return {"case": case, "condition": {"label": "doc-absent_skills-none"}, "seed": seed,
@@ -427,7 +424,7 @@ def test_report_restates_the_review_gate_and_marks_drafts():
     A judged.jsonl handed to a colleague carries no memory of the banner the run printed, so the
     provenance travels in the records and the report says it again.
     """
-    import report
+    from hpcbench.harness import report
 
     def episode(case, status, draft):
         return {"case": case, "condition": {"label": "doc-absent_skills-none"},
@@ -458,7 +455,7 @@ def test_comparison_marks_movement_it_cannot_attribute():
     it. A cell that was stable across five seeds and then moved is the only movement worth
     attributing to the change under test.
     """
-    import report
+    from hpcbench.harness import report
 
     def cell(case, passed_count, total, condition="doc-absent_skills-none"):
         return [

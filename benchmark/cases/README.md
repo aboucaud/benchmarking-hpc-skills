@@ -46,7 +46,7 @@ The harness copies only the visible files into the sandbox. An agent that can re
 ## Checking coherence
 
 ```bash
-uv run --with pyyaml benchmark/validate_cases.py
+uv run --with pyyaml src/hpcbench/validate_cases.py
 ```
 
 Verifies every case has its files, declares provenance and detection signals, lists at least two

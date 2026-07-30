@@ -64,7 +64,7 @@ must be correct, or a failure can't be attributed.
 5. Collect the final `job.sh`, the stub call log, and the transcript.
 6. Judge.
 
-Built, with L1 scoring: [`benchmark/harness/README.md`](../benchmark/harness/README.md). Steps 1–5
+Built, with L1 scoring: [`src/hpcbench/harness/README.md`](../src/hpcbench/harness/README.md). Steps 1–5
 and the L1 half of step 6 exist; L2 and L3 are the remaining piece.
 
 **Calibrate before believing anything.** Two runs bound the measurement, and both are asserted in
@@ -110,7 +110,7 @@ would silently invalidate every doc-present episode. This is the one piece of th
 design that survives into the MVP, at a small fraction of the cost.
 
 Built, with its divergences from real Slurm listed:
-[`benchmark/stubs/README.md`](../benchmark/stubs/README.md). Two decisions there shape what the
+[`src/hpcbench/stubs/README.md`](../src/hpcbench/stubs/README.md). Two decisions there shape what the
 cases can measure:
 
 - **Rejections use Slurm's own wording.** An agent that never read the document can still
@@ -187,7 +187,7 @@ entirely should still be able to read the L1/L2 result.
 - Judge prompts and rubrics are committed and versioned. A result is reported against the judge
   version that produced it.
 
-Built: [`benchmark/harness/README.md`](../benchmark/harness/README.md). Three things the
+Built: [`src/hpcbench/harness/README.md`](../src/hpcbench/harness/README.md). Three things the
 implementation adds to the design above, each of which the design needed:
 
 - **The judge never sees the L1 verdict.** "L1 and L2 agreeing" is only evidence if they were

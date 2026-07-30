@@ -2,10 +2,10 @@
 """Run one episode: materialize a condition, let an agent act, collect the evidence, score L1.
 
     # inspect a condition without running an agent
-    uv run --with pyyaml benchmark/harness/episode.py C3-wrong-partition --runner noop --keep
+    uv run --with pyyaml src/hpcbench/harness/episode.py C3-wrong-partition --runner noop --keep
 
     # the full 2x2 for one case, with scripted conduct
-    uv run --with pyyaml benchmark/harness/episode.py C3-wrong-partition --matrix --seeds 3
+    uv run --with pyyaml src/hpcbench/harness/episode.py C3-wrong-partition --matrix --seeds 3
 
 An episode is a case, a condition, and a seed. The condition is the 2x2 the benchmark turns on:
 
@@ -43,6 +43,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import sys
 import time
@@ -51,15 +52,15 @@ from pathlib import Path
 
 import yaml
 
-HARNESS = Path(__file__).resolve().parent
-BENCHMARK = HARNESS.parent
-REPO = BENCHMARK.parent
-sys.path.insert(0, str(HARNESS))
-sys.path.insert(0, str(BENCHMARK / "stubs"))
+if __package__ in (None, ""):  # invoked as a script rather than imported
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-import detect  # noqa: E402
-import install_stubs  # noqa: E402
-import runners as runner_module  # noqa: E402
+from hpcbench.harness import detect  # noqa: E402
+from hpcbench.harness import runners as runner_module  # noqa: E402
+from hpcbench.paths import BENCHMARK, GENERATED, REPO  # noqa: E402
+from hpcbench.stubs import install_stubs  # noqa: E402
+
+HARNESS = Path(__file__).resolve().parent
 
 CONDITION_LABELS = (
     "doc-absent_skills-none", "doc-absent_skills-good",
@@ -89,7 +90,6 @@ SITE_GUIDANCE_POINTER = (
     "directory (`INSTRUCTIONS.md`) or under `skills/`. Check, and use whatever you find. "
     "There may be nothing there.\n"
 )
-GENERATED = BENCHMARK / "generated"
 
 
 @dataclass(frozen=True)
@@ -496,7 +496,8 @@ def run_episode(
     limits = detect.load_detector_limits(GENERATED / "detectors.json")
 
     root = sandbox_root or Path(
-        f"/tmp/hpcbench-{case_id}-{condition.label}-s{seed}-{int(time.time())}"
+        f"/tmp/hpcbench-{case_id}-{condition.label}-s{seed}-"
+        f"{int(time.time())}-{os.getpid()}"
     )
     sandbox = root / "sandbox"
     environment = materialize(case_dir, sandbox, condition, skills_path)

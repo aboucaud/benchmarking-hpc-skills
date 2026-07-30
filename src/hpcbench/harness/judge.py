@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """L2 and L3 — the assessed and projected layers. This is where the LLM lives.
 
-    uv run --with pyyaml benchmark/harness/judge.py results/episodes-*.jsonl
-    uv run --with pyyaml benchmark/harness/judge.py results/episodes-*.jsonl --l3 --model opus
+    uv run --with pyyaml src/hpcbench/harness/judge.py results/episodes-*.jsonl
+    uv run --with pyyaml src/hpcbench/harness/judge.py results/episodes-*.jsonl --l3 --model opus
 
 Reads the episode records and artifacts the harness wrote, adds an `l2` (and optionally `l3`) block
 to each, and writes `*.judged.jsonl` beside them. Nothing is re-run: the transcript, the merged call
@@ -52,8 +52,12 @@ from pathlib import Path
 
 import yaml
 
+if __package__ in (None, ""):  # invoked as a script rather than imported
+    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
+from hpcbench.paths import BENCHMARK  # noqa: E402
+
 HARNESS = Path(__file__).resolve().parent
-BENCHMARK = HARNESS.parent
 PROMPTS = HARNESS / "prompts"
 
 TRANSCRIPT_BUDGET = 60_000  # characters of transcript handed to the judge

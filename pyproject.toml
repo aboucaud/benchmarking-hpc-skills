@@ -1,0 +1,36 @@
+[project]
+name = "hpc-skills-bench"
+version = "0.0.1"
+description = "Harness for benchmarking whether HPC skills make coding agents better cluster citizens"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+dependencies = [
+    "pyyaml>=6",  # center.yaml, case.yaml, generated configs
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+  "pytest-xdist>=3.6",   # the suite is subprocess-bound; -n auto roughly halves it
+  "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hpcbench"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# `src` on the path rather than an editable install, so `pytest` works on a fresh clone with
+# nothing installed. The modules are also runnable as scripts; see the bootstrap at the top of
+# each entry point.
+pythonpath = ["src"]
+addopts = "-q -n auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
