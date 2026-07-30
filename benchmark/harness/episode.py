@@ -437,6 +437,11 @@ def run_episode(
         "agent_error": result.error,
         "cost": result.cost,
         "model": getattr(runner, "model", None),
+        # Review provenance travels with the result. A judged.jsonl handed to someone else has to
+        # say whether its cases were ever reviewed; otherwise the gate only exists for whoever
+        # happened to watch the run print its banner.
+        "case_review_status": case.get("review_status", "unknown"),
+        "case_draft": bool(case.get("draft")),
         "validity": validity,
         "valid": valid,
         "invalid_reason": reason,

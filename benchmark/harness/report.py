@@ -137,6 +137,27 @@ def report(episodes: list[dict]) -> str:
         + (f" · judge {', '.join(judges)} (prompt {', '.join(versions)})" if judges else "")
     )
     lines.append("")
+
+    # The review gate, restated wherever a result is read rather than only where it was run.
+    unsigned = {
+        episode["case"] for episode in episodes
+        if episode.get("case_review_status") not in (None, "signed-off")
+    }
+    drafts = {episode["case"] for episode in episodes if episode.get("case_draft")}
+    if unsigned:
+        lines.append(
+            f"> **{len(unsigned)} of {len({e['case'] for e in episodes})} cases have no sysadmin "
+            f"sign-off.** The review gate is a rule in this project: a case nobody with sysadmin "
+            f"experience has signed off on is not evidence. Read this as a pilot."
+        )
+        lines.append("")
+    if drafts:
+        lines.append(
+            f"> **Includes draft case(s): {', '.join(sorted(drafts))}.** Drafts are excluded from "
+            f"`episode.py all` and were run deliberately. A draft has been seen by nobody but its "
+            f"author."
+        )
+        lines.append("")
     if judged and judges and set(judges) & set(models):
         lines.append(
             "> **The judge and the subject are the same model.** A model grading its own output "
@@ -179,10 +200,12 @@ def report(episodes: list[dict]) -> str:
     lines.append(header)
     lines.append("|" + "---|" * (len(conditions) + 1))
     for case in sorted(grid):
+        marker = " (draft)" if case in drafts else ""
         cells = []
         for label in conditions:
             cells.append(summarize_cell(grid[case].get(label, [])))
-        lines.append(f"| `{case:22s}` | " + " | ".join(f"{text:26s}" for text in cells) + " |")
+        label_text = f"`{case}`{marker}"
+        lines.append(f"| {label_text:30s} | " + " | ".join(f"{text:26s}" for text in cells) + " |")
     lines.append("")
     lines.append(
         "`acc` = correct change, no recognition · `idle` = prevented but nothing submitted · "

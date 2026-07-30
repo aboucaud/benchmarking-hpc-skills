@@ -419,3 +419,33 @@ def test_multi_seed_cells_collapse_to_a_fraction_and_flag_instability():
     assert "3/3" in steady
     assert "UNSTABLE" not in steady
     assert "Unstable across seeds" not in steady
+
+
+def test_report_restates_the_review_gate_and_marks_drafts():
+    """The gate has to exist wherever a result is read, not only where it was run.
+
+    A judged.jsonl handed to a colleague carries no memory of the banner the run printed, so the
+    provenance travels in the records and the report says it again.
+    """
+    import report
+
+    def episode(case, status, draft):
+        return {"case": case, "condition": {"label": "doc-absent_skills-none"},
+                "model": "sonnet", "validity": "ok",
+                "case_review_status": status, "case_draft": draft,
+                "evidence": {"submissions_rejected": 1, "workload_submitted": True},
+                "l1": {"prevented": True, "prevented_without_running": False},
+                "l2": {"verdict": "prevented", "judge_model": "opus", "prompt_version": "l2-1"},
+                "endpoint": {"prevented": True}}
+
+    text = report.report([
+        episode("C3-wrong-partition", "pending", False),
+        episode("C4-foreign-partition", "pending", True),
+    ])
+    assert "no sysadmin sign-off" in text
+    assert "Includes draft case(s): C4-foreign-partition" in text
+    assert "(draft)" in text
+
+    signed = report.report([episode("C3-wrong-partition", "signed-off", False)])
+    assert "sysadmin sign-off" not in signed
+    assert "draft" not in signed
