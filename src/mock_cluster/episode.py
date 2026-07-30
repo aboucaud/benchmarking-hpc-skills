@@ -22,6 +22,7 @@ REPO = PACKAGE.parents[1]
 BENCHMARK = REPO / "benchmark"
 CASES = BENCHMARK / "cases"
 GENERATED = BENCHMARK / "generated"
+AGENT = REPO / "agent"
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
 
@@ -77,7 +78,7 @@ def materialize_condition(
             if path.is_file():
                 files[path.name] = path.read_bytes()
     if condition.doc:
-        files["INSTRUCTIONS.md"] = (GENERATED / "INSTRUCTIONS.md").read_bytes()
+        files["agent/INTRODUCTION.md"] = (AGENT / "INTRODUCTION.md").read_bytes()
     if condition.skills != "none":
         if skills_path is None or not skills_path.is_dir():
             raise ValueError(
@@ -117,6 +118,24 @@ def artifact_text(files: dict[str, bytes]) -> dict[str, str]:
         except UnicodeDecodeError:
             result[name] = f"<binary sha256={hashlib.sha256(content).hexdigest()}>"
     return result
+
+
+def prompt_for_condition(case_dir: Path, condition: Condition) -> str:
+    prompt = (case_dir / "prompt.md").read_text().strip()
+    if condition.doc:
+        return (
+            "Before doing the task, read `/agent/INTRODUCTION.md` and follow "
+            "its cluster guidance.\n\n"
+            f"{prompt}"
+        )
+    return prompt
+
+
+def events_for_episode(events: list[dict], episode_id: str) -> list[dict]:
+    """Exclude infrastructure healthchecks while retaining the raw evidence."""
+    return [
+        event for event in events if event.get("episode_id") == episode_id
+    ]
 
 
 class DockerEpisode:
@@ -170,7 +189,16 @@ class DockerEpisode:
         try:
             substrate.start()
             security = substrate.security_preflight()
-            substrate.materialize(files)
+            workspace_files = {
+                name: content
+                for name, content in files.items()
+                if not name.startswith("agent/")
+            }
+            substrate.materialize(workspace_files)
+            if self.condition.doc:
+                substrate.materialize_agent_document(
+                    files["agent/INTRODUCTION.md"]
+                )
             path = substrate.ssh_shell("command -v srun").text.strip()
             if path != "/usr/bin/srun":
                 raise RuntimeError(f"srun interception is not first on PATH: {path}")
@@ -182,17 +210,17 @@ class DockerEpisode:
                     "`python -m src.mock_cluster auth` once"
                 )
             active_runner = runner or CodexExecRunner(self.model)
-            prompt = (case_dir / "prompt.md").read_text().strip()
+            prompt = prompt_for_condition(case_dir, self.condition)
             run_result = active_runner.run(
                 substrate, prompt, episode_id, self.timeout_s
             )
             time.sleep(1)
             final_files = substrate.collect_workspace()
-            # Every episode owns a fresh observer volume, so collect the full
-            # record. The agent-visible episode label remains useful metadata,
-            # but cannot hide an event by changing its environment.
+            # Retain the complete fresh-cluster record for audit. Scoring
+            # below selects the harness episode label so infrastructure
+            # healthchecks cannot count as agent behavior.
             events = substrate.observer_events()
-            job_ids = substrate.submitted_job_ids()
+            job_ids = substrate.submitted_job_ids(episode_id)
             accounting = substrate.accounting(job_ids)
             controller_log = substrate.controller_log(job_ids)
             gateway_events = substrate.gateway_events()
@@ -204,12 +232,13 @@ class DockerEpisode:
         finally:
             substrate.close()
 
+        scored_events = events_for_episode(events, episode_id)
         l1 = score_episode(
             case=case,
             limits=limits,
             original_job=(case_dir / "job.sh").read_text(),
             files=final_files,
-            events=events,
+            events=scored_events,
             commands=run_result.commands,
         )
         acted = bool(run_result.transcript or run_result.commands)
@@ -252,6 +281,7 @@ class DockerEpisode:
                 },
                 "final_files": artifact_text(final_files),
                 "observer": events,
+                "scored_observer_event_count": len(scored_events),
                 "gateway": gateway_events,
                 "accounting": accounting,
                 "controller_log": controller_log,
