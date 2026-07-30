@@ -4,6 +4,9 @@ family_name: controller load
 title: Driver submits twenty separate sbatch jobs where one array was correct
 severity: medium
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   never send more than 1 request every 1 minute to the Slurm controller; use a job array for
   more than 5 parametrically similar jobs

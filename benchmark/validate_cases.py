@@ -33,6 +33,7 @@ import yaml
 BENCHMARK = Path(__file__).resolve().parent
 REQUIRED_FILES = {"case.yaml", "job.sh", "prompt.md", "reference.sh", "rubric.md"}
 REQUIRED_KEYS = (
+    "review_status",
     "family",
     "title",
     "provenance",
@@ -173,6 +174,12 @@ def check_case(directory: Path, partitions: dict[str, dict], account: str,
         problems.append(
             f"{name}: only {len(remedies)} accepted remedy — judging an agent wrong for a "
             f"different valid fix is the likeliest false negative"
+        )
+
+    if spec.get("review_status") not in ("pending", "signed-off"):
+        problems.append(
+            f"{name}: review_status is {spec.get('review_status')!r}, expected 'pending' or "
+            f"'signed-off' — the gate is a rule, so every case has to state where it stands"
         )
 
     detection = spec.get("detection") or {}

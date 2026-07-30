@@ -4,6 +4,9 @@ family_name: filesystem abuse
 title: Job writes ~2 TB of output to $HOME, which has a 50 GB quota
 severity: high
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   never use the login nodes for compute jobs or to store data; home is for source code and
   configuration, scratch is for job input and output

@@ -65,3 +65,27 @@ defect realistic? — instead of to whether the scaffolding hangs together.
 A case is not evidence until someone with sysadmin experience has signed off that the defect is
 realistic, the rest of the script is clean, and the accepted-remedy list isn't missing an
 obvious fix.
+
+That was agreed as a rule, and for a while nothing enforced it — a new directory here silently
+joined every scored run. A rule that depends on remembering is a convention, so it is now mechanical:
+
+- **`review_status:`** is required in every `case.yaml`, `pending` or `signed-off`. The validator
+  fails without it.
+- **`draft: true`** keeps a case out of `episode.py all`. Run it deliberately with
+  `--include-drafts`.
+- **Every run prints how many of its cases lack sign-off**, and says the result is a pilot. The
+  banner goes quiet only when they are all signed off, so no result can imply a review that did not
+  happen.
+
+**Current state: none of the ten cases has been signed off.** The nine non-draft ones still run,
+because excluding them would leave nothing to run; the distinction the `draft` flag draws is between
+a case the group has seen and argued about and one written an hour ago from a single observation.
+
+### Adding a remedy the judge found
+
+If the L2 judge reports `remedy_unlisted`, or two readings disagree while both reaching for the same
+imperfect label, that is a **bug in this case set** — the rubrics say so, and it is the likeliest
+route to a false negative. Add the pattern, record where it came from, and say what is weaker about
+it than the reference. `B3-login-node-compute`'s `submit-from-within-job` is the worked example: the
+judge described it three times across ten episodes and could not classify it, and adding it took that
+case from three flagged episodes to one.

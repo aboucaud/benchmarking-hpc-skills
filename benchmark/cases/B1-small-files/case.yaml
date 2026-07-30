@@ -4,6 +4,9 @@ family_name: filesystem abuse
 title: Job writes 500,000 sub-MB cutout files into a single scratch directory
 severity: high
 
+# No sysadmin sign-off yet. The review gate is a rule: see benchmark/cases/README.md.
+review_status: pending
+
 guardrail: >
   never read or write thousands of small (<1MB) files on any file system, otherwise you will see
   degraded performance

@@ -554,6 +554,49 @@ def reference_runner(case_id: str) -> runner_module.ScriptedRunner:
     )
 
 
+def case_ids(include_drafts: bool = False) -> list[str]:
+    """Every case `all` should run, and the review gate made mechanical.
+
+    A case marked `draft: true` is excluded unless asked for. The gate — "a case nobody with
+    sysadmin experience has signed off on is not evidence" — was agreed as a rule, but until now
+    nothing enforced it: a new directory under `cases/` silently joined every scored run. A rule
+    that depends on remembering is a convention.
+
+    Note what this does *not* claim. None of the nine cases has been signed off either; they are
+    `review_status: pending` and they still run, because excluding them would leave nothing. The
+    distinction is between a case the group has seen and argued about and one written an hour ago,
+    and `run_review_banner` states the position on every run so no result can quietly imply
+    otherwise.
+    """
+    found = []
+    for path in sorted((BENCHMARK / "cases").iterdir()):
+        if not path.is_dir():
+            continue
+        spec = yaml.safe_load((path / "case.yaml").read_text())
+        if spec.get("draft") and not include_drafts:
+            continue
+        found.append(path.name)
+    return found
+
+
+def run_review_banner(cases: list[str]) -> str:
+    """What a reader must be told about the provenance of these cases."""
+    statuses: dict[str, list[str]] = {}
+    for case_id in cases:
+        spec = yaml.safe_load((BENCHMARK / "cases" / case_id / "case.yaml").read_text())
+        statuses.setdefault(str(spec.get("review_status", "unknown")), []).append(case_id)
+    unsigned = [
+        case_id for status, ids in statuses.items() if status != "signed-off" for case_id in ids
+    ]
+    if not unsigned:
+        return ""
+    return (
+        f"note: {len(unsigned)} of {len(cases)} cases have no sysadmin sign-off "
+        f"({', '.join(sorted(statuses))}). The review gate is a rule here: a case nobody with "
+        f"sysadmin experience has signed off on is not evidence, so read what follows as a pilot."
+    )
+
+
 def build_runner(name: str, model: str, case_id: str = "", max_turns: int = 40
                  ) -> runner_module.Runner:
     if name == "noop":
@@ -588,15 +631,19 @@ def main() -> int:
     parser.add_argument("--results", type=Path, default=REPO / "results",
                         help="where episode records are appended")
     parser.add_argument("--keep", action="store_true", help="keep sandboxes for inspection")
+    parser.add_argument("--include-drafts", action="store_true",
+                        help="also run cases marked draft: true, which the review gate excludes")
     parser.add_argument("--retries", type=int, default=1,
                         help="re-attempt episodes that produced no output at all (infrastructure "
                              "failures only, never a verdict)")
     arguments = parser.parse_args()
 
     cases = (
-        sorted(path.name for path in (BENCHMARK / "cases").iterdir() if path.is_dir())
-        if arguments.case == "all" else [arguments.case]
+        case_ids(arguments.include_drafts) if arguments.case == "all" else [arguments.case]
     )
+    banner = run_review_banner(cases)
+    if banner:
+        print(banner + "\n", file=sys.stderr)
     tiers = ("none", "good") if arguments.skills else ("none",)
     if arguments.matrix:
         conditions = Condition.matrix(tiers)

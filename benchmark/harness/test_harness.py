@@ -722,3 +722,53 @@ def test_isolated_config_carries_credentials_and_nothing_else(tmp_path, monkeypa
         assert not (isolated / leak).exists(), f"the episode would inherit {leak}"
     # Symlinked, so no second copy of a credential file is written to disk.
     assert (isolated / ".credentials.json").is_symlink()
+
+
+# ------------------------------------------------------------------------------------------
+# The review gate, made mechanical
+# ------------------------------------------------------------------------------------------
+
+
+def test_drafts_are_excluded_from_all_by_default():
+    """The gate was a rule that nothing enforced.
+
+    "A case nobody with sysadmin experience has signed off on is not evidence" was agreed
+    explicitly, but a new directory under cases/ silently joined every scored run. A rule that
+    depends on remembering is a convention.
+    """
+    default = episode_module.case_ids()
+    everything = episode_module.case_ids(include_drafts=True)
+    drafts = sorted(set(everything) - set(default))
+    assert drafts, "expected at least one draft case to exercise the gate"
+    for case_id in drafts:
+        spec = yaml.safe_load(
+            (BENCHMARK / "cases" / case_id / "case.yaml").read_text()
+        )
+        assert spec.get("draft") is True
+    assert set(default) < set(everything)
+
+
+def test_every_case_states_where_it_stands_on_review():
+    for case_id in episode_module.case_ids(include_drafts=True):
+        spec = yaml.safe_load((BENCHMARK / "cases" / case_id / "case.yaml").read_text())
+        assert spec.get("review_status") in ("pending", "signed-off"), case_id
+
+
+def test_unsigned_cases_announce_themselves_on_every_run():
+    """A result must not be able to imply sign-off that has not happened.
+
+    None of the nine has been signed off yet, so the banner has to fire — and it has to keep firing
+    until someone actually reviews them, not be silenced by having been read once.
+    """
+    banner = episode_module.run_review_banner(episode_module.case_ids())
+    assert "no sysadmin sign-off" in banner
+    assert "pilot" in banner
+
+
+def test_banner_is_silent_once_everything_is_signed_off(tmp_path, monkeypatch):
+    """And it must go quiet when the gate is actually satisfied, or it is just noise."""
+    monkeypatch.setattr(
+        episode_module.yaml, "safe_load",
+        lambda _text: {"review_status": "signed-off"},
+    )
+    assert episode_module.run_review_banner(["A1-srun-loop"]) == ""
