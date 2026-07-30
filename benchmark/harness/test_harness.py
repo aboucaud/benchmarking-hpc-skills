@@ -668,3 +668,27 @@ def test_episode_record_carries_what_a_reader_needs(tmp_path):
     for layer in ("static", "call_log"):
         for finding in record["l1"][layer]["findings"]:
             assert finding["evidence"].strip()
+
+
+def test_claude_runner_isolates_the_operators_configuration():
+    """The contamination that made `skills-none` a fiction.
+
+    Without an isolated config directory the operator's whole personal setup loads into every
+    episode. The first live skills run reported fifty-odd skills available -- frontend-design,
+    wiki-update, forty metabolomics skills -- none of which the benchmark installed. The one skill
+    under test was buried among them, and the control arm had no claim to being a control.
+    """
+    line = runners.ClaudeCodeRunner().command_line("do the thing")
+    assert "--strict-mcp-config" in line, "an episode must not reach the operator's MCP servers"
+    assert "--permission-mode" in line and "bypassPermissions" in line
+    assert "--max-turns" in line
+
+
+def test_isolated_config_dir_is_created_outside_the_agents_directory(tmp_path):
+    """It must not appear inside `work/`, where the agent would see it as case material."""
+    work = tmp_path / "work"
+    work.mkdir()
+    runner = runners.ClaudeCodeRunner(binary="definitely-not-a-real-binary")
+    result = runner.run(work, "hi", {}, 5)
+    assert result.exit_code == 127          # short-circuits before spawning
+    assert not (work / "claude-config").exists()

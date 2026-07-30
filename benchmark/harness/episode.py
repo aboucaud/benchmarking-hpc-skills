@@ -61,6 +61,11 @@ import detect  # noqa: E402
 import install_stubs  # noqa: E402
 import runners as runner_module  # noqa: E402
 
+CONDITION_LABELS = (
+    "doc-absent_skills-none", "doc-absent_skills-good",
+    "doc-present_skills-none", "doc-present_skills-good",
+)
+
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
 GENERATED = BENCHMARK / "generated"
@@ -78,6 +83,11 @@ class Condition:
     @staticmethod
     def matrix(skill_tiers: tuple[str, ...] = ("none", "good")) -> list[Condition]:
         return [Condition(doc, tier) for doc in (False, True) for tier in skill_tiers]
+
+    @staticmethod
+    def from_label(label: str) -> Condition:
+        doc, skills = label.split("_")
+        return Condition(doc == "doc-present", skills.removeprefix("skills-"))
 
 
 # ------------------------------------------------------------------------------------------
@@ -110,9 +120,26 @@ def materialize(
                 f"{skills_path} — the skills under test are data, not part of this repo. "
                 f"Point --skills at a checkout of the bundle."
             )
-        destination = work / ".claude" / "skills"
-        destination.parent.mkdir(exist_ok=True)
+        # `.claude/skills/<name>/SKILL.md`, not `.claude/skills/SKILL.md`.
+        #
+        # The first version flattened the bundle into `skills/`, which is not a layout the harness
+        # recognises — so the skill would never have loaded and the arm would have run with no
+        # skills while labelled `skills-good`. That is the exact failure the tier check upstream
+        # exists to prevent, reintroduced one directory lower down.
+        destination = work / ".claude" / "skills" / skills_path.name
+        destination.mkdir(parents=True, exist_ok=True)
         shutil.copytree(skills_path, destination, dirs_exist_ok=True)
+
+        manifests = list(destination.rglob("SKILL.md"))
+        if not manifests:
+            raise SystemExit(
+                f"{skills_path} contains no SKILL.md — it is not a skill bundle, and an episode "
+                f"labelled skills-{condition.skills!r} that installed nothing would read as "
+                f"evidence that skills do nothing"
+            )
+        # Version control and test fixtures are not part of the skill under test.
+        for noise in (".git", "tests", ".github"):
+            shutil.rmtree(destination / noise, ignore_errors=True)
 
     assert_nothing_withheld_leaked(work)
     return environment
@@ -551,6 +578,9 @@ def main() -> int:
     parser.add_argument("--max-turns", type=int, default=40,
                         help="cost ceiling per episode, not a quality setting")
     parser.add_argument("--matrix", action="store_true", help="run all four conditions")
+    parser.add_argument("--condition", default=None, choices=CONDITION_LABELS,
+                        help="run one named cell instead of the default doc-absent/skills-none; "
+                             "passing --skills alone does not select the skills arm")
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--skills", type=Path, default=None,
@@ -568,7 +598,12 @@ def main() -> int:
         if arguments.case == "all" else [arguments.case]
     )
     tiers = ("none", "good") if arguments.skills else ("none",)
-    conditions = Condition.matrix(tiers) if arguments.matrix else [Condition(False, "none")]
+    if arguments.matrix:
+        conditions = Condition.matrix(tiers)
+    elif arguments.condition:
+        conditions = [Condition.from_label(arguments.condition)]
+    else:
+        conditions = [Condition(False, "none")]
     if arguments.matrix and not arguments.skills:
         print("note: --skills not given, so only the skills-none arm runs\n", file=sys.stderr)
 

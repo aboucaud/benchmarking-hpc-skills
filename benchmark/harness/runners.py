@@ -154,14 +154,13 @@ class ScriptedRunner:
 class ClaudeCodeRunner:
     """Headless Claude Code, one episode per invocation.
 
-    Not exercised in this PR — running it costs tokens and spends a model budget nobody has
-    authorized yet. What *is* tested is `parse_stream_json`, against recorded fixtures, because
-    that parser is where a silent failure would hide: a transcript whose Bash calls are not
-    recovered looks exactly like an agent that never ran a command, and case B3 would score clean.
+    The stub shims are first on PATH and the deny list below closes the one route they cannot, so
+    the agent's only way to a scheduler is through the shims. It runs with an **empty config
+    directory**, which is what makes a condition a condition — see `run`.
 
-    The sandbox is the only writable directory, the stub shims are first on PATH, and the deny
-    list in `.claude/settings.json` keeps the bare Slurm commands unreachable — so the agent's
-    only route to a scheduler is through the shims, which is the whole design.
+    `parse_stream_json` is tested against recorded fixtures rather than live runs, because that
+    parser is where a silent failure would hide: a transcript whose Bash calls are not recovered
+    looks exactly like an agent that never ran a command, and case B3 would score clean.
     """
 
     name = "claude-code"
@@ -196,6 +195,9 @@ class ClaudeCodeRunner:
             # A cost ceiling, not a quality setting. An agent that loops on a stub it does not
             # understand would otherwise bill until the wall-clock timeout.
             "--max-turns", str(self.max_turns),
+            # No MCP servers from anywhere. An episode that could reach the operator's connectors is
+            # not the sandbox this benchmark claims to run in.
+            "--strict-mcp-config",
             *self.extra_args,
         ]
 
@@ -203,10 +205,25 @@ class ClaudeCodeRunner:
         if shutil.which(self.binary) is None:
             return RunResult(error=f"{self.binary} not found on PATH", exit_code=127)
 
+        # An empty config directory, so the episode inherits nothing from whoever is running it.
+        #
+        # Without this the operator's entire personal configuration loads into every episode. The
+        # first live skills run reported fifty-odd skills available — `frontend-design`,
+        # `wiki-update`, forty metabolomics skills — none of which the benchmark installed. The
+        # `skills-none` arm was never skills-none, and the one skill under test was buried among
+        # dozens of irrelevant ones, which is not a condition anybody meant to measure.
+        #
+        # Project-level skills in the sandbox's own `.claude/skills/` still load, because those come
+        # from the working directory rather than the config directory. Verified: under isolation the
+        # available set is exactly `['hpc-session']` in the skills arm and empty without it.
+        isolated_config = work.parent / "claude-config"
+        isolated_config.mkdir(parents=True, exist_ok=True)
+
         started = time.time()
         try:
             completed = subprocess.run(
-                self.command_line(prompt), cwd=work, env={**os.environ, **env},
+                self.command_line(prompt), cwd=work,
+                env={**os.environ, **env, "CLAUDE_CONFIG_DIR": str(isolated_config)},
                 capture_output=True, text=True, timeout=timeout_s, check=False,
             )
         except subprocess.TimeoutExpired as expired:
