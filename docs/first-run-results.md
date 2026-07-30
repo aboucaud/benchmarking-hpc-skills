@@ -16,7 +16,7 @@ Short by intent — it is a working document to argue with, not a report.
 
 **Cost: $22.55** — $5.60 running, $16.95 judging. Judging is 75% of it.
 
-Raw records and the judged output are reproducible from `benchmark/harness/`; the aggregate below
+Raw records and the judged output are reproducible from `src/hpcbench/harness/`; the aggregate below
 comes from `report.py`.
 
 ## Results

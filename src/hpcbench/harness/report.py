@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Turn judged episodes into a report a reader can argue with.
 
-    uv run --with pyyaml benchmark/harness/report.py results/episodes-*.judged.jsonl
-    uv run --with pyyaml benchmark/harness/report.py results/*.judged.jsonl > report.md
+    uv run --with pyyaml src/hpcbench/harness/report.py results/episodes-*.judged.jsonl
+    uv run --with pyyaml src/hpcbench/harness/report.py results/*.judged.jsonl > report.md
 
 **Per case, not just a rate.** The methodology is explicit about this: at nine cases and three seeds
 the interesting content is *which* cases an intervention catches, not a percentage with a confidence

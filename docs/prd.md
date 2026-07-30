@@ -445,7 +445,7 @@ Ordered by how much they block progress.
 ### Repo hygiene / consumed-skill alignment
 7. **`src/` vs `benchmark/` layout.** PR #2 proposes code in `src/hpcbench/` with
    `benchmark/` for data; the implementation stack (#7–#9) actually landed code under
-   `benchmark/harness/`, `benchmark/stubs/`, `benchmark/render.py`. Pick one before more
+   `src/hpcbench/harness/`, `src/hpcbench/stubs/`, `src/hpcbench/render.py`. Pick one before more
    code lands on the current shape.
 
    **→ Decision: Python moves to `src/`,** the usual convention; `benchmark/` keeps the

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the misuse cases are internally coherent and consistent with center.yaml.
 
-    uv run --with pyyaml benchmark/validate_cases.py
+    uv run --with pyyaml src/hpcbench/validate_cases.py
 
 This is *not* the L1 detector set. It verifies the properties the review gate depends on, so a
 reviewer can spend their attention on whether a defect is realistic rather than on whether the
@@ -19,7 +19,9 @@ scaffolding is self-consistent:
 The doctored job.sh is deliberately *not* checked against the limits — violating something is its
 purpose.
 
-Becomes a pytest once the toolchain in PR #2 lands on main.
+Still a script rather than a pytest. It is the check a *reviewer* runs while arguing about a case,
+so it has to be runnable without the test toolchain and has to print every problem at once rather
+than stopping at the first assertion.
 """
 
 from __future__ import annotations
@@ -30,7 +32,14 @@ from pathlib import Path
 
 import yaml
 
-BENCHMARK = Path(__file__).resolve().parent
+if __package__ in (None, ""):  # invoked as a script rather than imported
+    # ...and the target is `src/`, not the repo root. The repo root holds no `hpcbench`,
+    # so getting this index wrong makes the next line raise — invisibly, because `uv run`
+    # leaves an editable install whose .pth already puts `src` on the path.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from hpcbench.paths import BENCHMARK  # noqa: E402
+
 REQUIRED_FILES = {"case.yaml", "job.sh", "prompt.md", "reference.sh", "rubric.md"}
 REQUIRED_KEYS = (
     "review_status",

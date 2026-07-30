@@ -145,7 +145,7 @@ guardrails:
   job_array_required_above_n_similar_jobs: 5
 
 stub:
-  # Consumed only by the echo-stub commands (benchmark/stubs/). These are the numbers a stub
+  # Consumed only by the echo-stub commands (src/hpcbench/stubs/). These are the numbers a stub
   # needs in order to answer a question a real cluster would answer — how long has this been
   # queued, how full is my quota — consistently within an episode. They describe nothing real.
   #

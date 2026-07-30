@@ -3,21 +3,21 @@
 Runs one episode — materialize a condition, let an agent act, collect the evidence, score the
 factual layer — and does it without touching a cluster or, unless you ask for it, a model.
 
-Methodology: [`docs/mvp-misuse-benchmark.md`](../../docs/mvp-misuse-benchmark.md).
+Methodology: [`docs/mvp-misuse-benchmark.md`](../../../docs/mvp-misuse-benchmark.md).
 
 ```bash
 # inspect a condition without running anything
-uv run --with pyyaml benchmark/harness/episode.py C3-wrong-partition --runner noop --keep
+uv run --with pyyaml src/hpcbench/harness/episode.py C3-wrong-partition --runner noop --keep
 
 # the two calibration bounds
-uv run --with pyyaml benchmark/harness/episode.py all --runner scripted-asis      --timeout 12
-uv run --with pyyaml benchmark/harness/episode.py all --runner scripted-reference --timeout 12
+uv run --with pyyaml src/hpcbench/harness/episode.py all --runner scripted-asis      --timeout 12
+uv run --with pyyaml src/hpcbench/harness/episode.py all --runner scripted-reference --timeout 12
 
 # a real episode
-uv run --with pyyaml benchmark/harness/episode.py all --runner claude-code --matrix \
+uv run --with pyyaml src/hpcbench/harness/episode.py all --runner claude-code --matrix \
     --seeds 3 --skills /path/to/skill-bundle
 
-uv run --with pyyaml --with pytest pytest benchmark/harness/test_harness.py -q
+uv run --with pyyaml --with pytest pytest tests/test_harness.py -q
 ```
 
 ## Calibration comes first
@@ -332,7 +332,7 @@ to end there, and the partial transcript still carries the conduct that got it t
 ## L2 and L3 — the judge
 
 ```bash
-uv run --with pyyaml benchmark/harness/judge.py results/episodes-*.jsonl --l3
+uv run --with pyyaml src/hpcbench/harness/judge.py results/episodes-*.jsonl --l3
 ```
 
 Reads the episode records and artifacts, adds `l2` (and optionally `l3`), writes `*.judged.jsonl`.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the episode harness and the L1 detectors.
 
-    uv run --with pyyaml --with pytest pytest benchmark/harness/test_harness.py -q
+    uv run --with pyyaml --with pytest pytest tests/test_harness.py -q
 
 The two that matter most are the calibration bounds. A detector set is only measuring the defect if
 it can produce both numbers, and neither is provable by inspection:
@@ -21,18 +21,16 @@ from __future__ import annotations
 
 import json
 import sys
-from pathlib import Path
 
 import pytest
 import yaml
 
-HARNESS = Path(__file__).resolve().parent
-BENCHMARK = HARNESS.parent
-sys.path.insert(0, str(HARNESS))
-
-import detect  # noqa: E402
-import episode as episode_module  # noqa: E402
-import runners  # noqa: E402
+from hpcbench.harness import (
+    detect,  # noqa: E402
+    runners,  # noqa: E402
+)
+from hpcbench.harness import episode as episode_module  # noqa: E402
+from hpcbench.paths import BENCHMARK  # noqa: E402
 
 CASES = sorted(path.name for path in (BENCHMARK / "cases").iterdir() if path.is_dir())
 LIMITS = detect.load_detector_limits(BENCHMARK / "generated" / "detectors.json")

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the center.yaml renderer.
 
-    uv run --with pyyaml --with pytest pytest benchmark/test_render.py -q
+    uv run --with pyyaml --with pytest pytest tests/test_render.py -q
 
 `center.yaml` claims to be an executable spec. These tests are what makes the claim more than a
 sentence in a README, and the ones worth reading first are:
@@ -19,16 +19,12 @@ sentence in a README, and the ones worth reading first are:
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 import yaml
 
-BENCHMARK = Path(__file__).resolve().parent
-sys.path.insert(0, str(BENCHMARK))
-
-import render  # noqa: E402
+from hpcbench import render  # noqa: E402
+from hpcbench.paths import BENCHMARK  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -117,7 +113,7 @@ def test_committed_artefacts_are_current(center):
     for path, content in render.artefacts(center).items():
         assert path.exists(), f"{path.name} has never been generated"
         assert path.read_text() == content, (
-            f"{path.name} is stale — run: uv run --with pyyaml benchmark/render.py write"
+            f"{path.name} is stale — run: uv run --with pyyaml src/hpcbench/render.py write"
         )
 
 
