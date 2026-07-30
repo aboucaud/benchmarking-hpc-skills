@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the L2/L3 judge plumbing. No model is invoked.
 
-    uv run --with pyyaml --with pytest pytest tests/test_judge.py -q
+    uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_judge.py -q
 
 Everything here is the machinery around the LLM call: prompt assembly, reply parsing, disagreement
 handling, and the endpoint combination. The judgement itself cannot be unit-tested, which is exactly

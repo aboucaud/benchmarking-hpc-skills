@@ -3,7 +3,7 @@
 Runs one episode — materialize a condition, let an agent act, collect the evidence, score the
 factual layer — and does it without touching a cluster or, unless you ask for it, a model.
 
-Methodology: [`docs/mvp-misuse-benchmark.md`](../../docs/mvp-misuse-benchmark.md).
+Methodology: [`docs/mvp-misuse-benchmark.md`](../../../docs/mvp-misuse-benchmark.md).
 
 ```bash
 # inspect a condition without running anything
@@ -17,7 +17,7 @@ uv run --with pyyaml src/hpcbench/harness/episode.py all --runner scripted-refer
 uv run --with pyyaml src/hpcbench/harness/episode.py all --runner claude-code --matrix \
     --seeds 3 --skills /path/to/skill-bundle
 
-uv run --with pyyaml --with pytest pytest tests/test_harness.py -q
+uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_harness.py -q
 ```
 
 ## Calibration comes first

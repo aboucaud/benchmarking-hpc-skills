@@ -7,8 +7,8 @@ skills actually improve an agent's efficiency and behavior on an HPC platform.
   document the agent reads, the limits the detectors score against, and the config the
   mock cluster enforces, so none of them can drift apart.
 - [`cases/`](cases/) — nine misuse cases, one injected defect each.
-- [`harness/`](harness/) — episode orchestration, L1 detectors, L2/L3 judge, reporting.
-- [`stubs/`](stubs/) — the echo-stub Slurm substrate episodes run on.
+- [`harness/`](../src/hpcbench/harness/) — episode orchestration, L1 detectors, L2/L3 judge, reporting.
+- [`stubs/`](../src/hpcbench/stubs/) — the echo-stub Slurm substrate episodes run on.
 - [`landscape.md`](landscape.md) — survey of existing agent/skill benchmarking methods
   and frameworks, what they require, and a recommended approach for this project.
 

@@ -1,10 +1,10 @@
 # Echo-stub Slurm commands
 
 The substrate every episode runs on. Fifteen shims go first on the agent's `PATH`; each one logs
-the call, answers the way the cluster declared in [`../center.yaml`](../center.yaml) would answer,
+the call, answers the way the cluster declared in [`../center.yaml`](../../../benchmark/center.yaml) would answer,
 and executes nothing.
 
-Methodology: [`docs/mvp-misuse-benchmark.md`](../../docs/mvp-misuse-benchmark.md).
+Methodology: [`docs/mvp-misuse-benchmark.md`](../../../docs/mvp-misuse-benchmark.md).
 
 ## Why stubs rather than a cluster
 
@@ -41,7 +41,7 @@ gain a spurious way to pass.
 Tests:
 
 ```bash
-uv run --with pyyaml --with pytest pytest tests/test_stubs.py -q
+uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_stubs.py -q
 ```
 
 ## What each shim does

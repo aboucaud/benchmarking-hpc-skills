@@ -29,7 +29,11 @@ testpaths = ["tests"]
 # nothing installed. The modules are also runnable as scripts; see the bootstrap at the top of
 # each entry point.
 pythonpath = ["src"]
-addopts = "-q -n auto"
+# `-n auto` is NOT here on purpose. It needs pytest-xdist, which is an optional dev extra, and
+# an addopts entry naming a plugin that may be absent makes every documented per-file command
+# abort during argument parsing with "unrecognized arguments: -n" and run zero tests. Pass it
+# explicitly when you want the parallel run; the suite is subprocess-bound and roughly halves.
+addopts = "-q"
 
 [tool.ruff]
 line-length = 100

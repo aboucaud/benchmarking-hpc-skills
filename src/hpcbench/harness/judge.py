@@ -53,7 +53,10 @@ from pathlib import Path
 import yaml
 
 if __package__ in (None, ""):  # invoked as a script rather than imported
-    sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+    # ...and the target is `src/`, not the repo root. The repo root holds no `hpcbench`,
+    # so getting this index wrong makes the next line raise — invisibly, because `uv run`
+    # leaves an editable install whose .pth already puts `src` on the path.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from hpcbench.paths import BENCHMARK  # noqa: E402
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the center.yaml renderer.
 
-    uv run --with pyyaml --with pytest pytest tests/test_render.py -q
+    uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_render.py -q
 
 `center.yaml` claims to be an executable spec. These tests are what makes the claim more than a
 sentence in a README, and the ones worth reading first are:

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the episode harness and the L1 detectors.
 
-    uv run --with pyyaml --with pytest pytest tests/test_harness.py -q
+    uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_harness.py -q
 
 The two that matter most are the calibration bounds. A detector set is only measuring the defect if
 it can produce both numbers, and neither is provable by inspection:
