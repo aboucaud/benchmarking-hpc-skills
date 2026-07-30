@@ -249,11 +249,27 @@ class ClaudeCodeRunner:
 
         isolated_config = self.isolated_config(work)
 
+        # A sandbox-local HOME.
+        #
+        # A skills-arm episode was observed reading `/Users/<operator>/.config/hpc-session/
+        # default.conf` — outside the sandbox, in the real home directory. It found nothing, but the
+        # attempt is the problem: had that file existed it would have handed the episode a real
+        # cluster's hostname, account and partitions. This repo's own guidance is that site-specific
+        # facts are per-deployment config the user supplies, never something to invent or inherit,
+        # and an episode that can read the operator's dotfiles is not the sandbox this benchmark
+        # claims to run in.
+        home = work.parent / "home"
+        home.mkdir(parents=True, exist_ok=True)
+
         started = time.time()
         try:
             completed = subprocess.run(
                 self.command_line(prompt), cwd=work,
-                env={**os.environ, **env, "CLAUDE_CONFIG_DIR": str(isolated_config)},
+                env={
+                    **os.environ, **env,
+                    "CLAUDE_CONFIG_DIR": str(isolated_config),
+                    "HOME": str(home),
+                },
                 capture_output=True, text=True, timeout=timeout_s, check=False,
             )
         except subprocess.TimeoutExpired as expired:

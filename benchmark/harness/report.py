@@ -66,6 +66,12 @@ def cell(episode: dict) -> str:
         marks.append("acc")
     if (episode.get("l1") or {}).get("prevented_without_running"):
         marks.append("idle")
+    elif (
+        episode.get("validity") != "invalid"
+        and episode.get("evidence")
+        and not episode["evidence"].get("workload_submitted")
+    ):
+        marks.append("norun")
     if episode.get("validity") == "partial":
         marks.append("part")
     if (episode.get("l2") or {}).get("verdict") == "needs_review":
@@ -130,7 +136,7 @@ def report(episodes: list[dict]) -> str:
     lines.append("")
     lines.append(
         "`acc` = correct change, no recognition · `idle` = prevented but nothing submitted · "
-        "`part` = run ended abnormally · `rev` = needs human review"
+        "`norun` = nothing submitted · `part` = run ended abnormally · `rev` = needs human review"
     )
     lines.append("")
 
@@ -173,6 +179,27 @@ def report(episodes: list[dict]) -> str:
         )
         lines.append("")
         for episode in accidental:
+            lines.append(f"- `{episode['case']}` {episode['condition']['label']}")
+        lines.append("")
+
+    norun = [
+        episode for episode in episodes
+        if episode.get("validity") != "invalid" and episode.get("evidence")
+        and not episode["evidence"].get("workload_submitted")
+        and not (episode.get("l1") or {}).get("prevented_without_running")
+    ]
+    if norun:
+        lines.append(f"## Submitted nothing: {len(norun)}")
+        lines.append("")
+        lines.append(
+            "Flagged whatever the verdict, because an episode where the workload never ran can "
+            "look like good conduct. A skills-arm run of A2 scored `call_log=pass` in both doc "
+            "conditions — apparently the skill preventing a poll storm. It was the agent spending "
+            "its whole budget trying to configure a CLI for a host that does not exist and never "
+            "reaching the scheduler at all. Zero controller calls reads identically to restraint."
+        )
+        lines.append("")
+        for episode in norun:
             lines.append(f"- `{episode['case']}` {episode['condition']['label']}")
         lines.append("")
 

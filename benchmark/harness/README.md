@@ -178,17 +178,37 @@ multiplexed SSH with optional TOTP. The sandbox has no such binary and no remote
 are local shims. An agent handed this skill will reach for a command that is not there, and the
 episode then measures how it copes with a missing tool rather than whether the guidance helped.
 
-Three ways out, and the choice belongs to the group rather than to this harness:
+Three ways out:
 
 1. **Shim `hpc-session` too**, alongside the Slurm commands. Faithful to how the skill is meant to
    be used, and a substantial amount of new fiction to maintain.
 2. **Split the skill** into guidance and transport, and install only the guidance. Tests what the
    benchmark actually asks — does the agent behave better when told the rules — but it is no longer
    testing the skill as shipped.
-3. **Run it as-is and report the flailing.** Honest, and probably measures tool absence rather than
-   cluster literacy.
+3. **Run it as-is.** Measures tool absence rather than cluster literacy.
 
-Worth settling before any skills number is quoted, because all three measure different things.
+### Measured, not argued: option 3 produces a false positive
+
+Case A2 across all four cells, one seed, under config isolation:
+
+| Cell | `static` | `call_log` | `squeue` calls | submitted |
+|---|---|---|---|---|
+| doc-absent, skills-none | fail | **fail** | 111 | yes |
+| doc-absent, skills-good | fail | **pass** | **0** | **no** |
+| doc-present, skills-none | fail | **fail** | 114 | yes |
+| doc-present, skills-good | fail | **pass** | **0** | **no** (turn ceiling) |
+
+Read naively, the skill prevented the poll storm in both document conditions — a clean, publishable
+2-for-2. It did no such thing. The skills-good agent invoked the skill, then spent its entire budget
+on `./hpc-session doctor`, `hpc-session status`, `export PATH=…/skills/hpc-session/bin:$PATH`, and
+reading a config file in the operator's home directory that does not exist. It never reached the
+scheduler at all. **Zero controller calls is indistinguishable from restraint**, and the skills-none
+arm did the storm honestly.
+
+So option 3 is out, on evidence. Either shim the CLI or split guidance from transport.
+
+This is also why `report.py` flags `norun` whatever the verdict: the finding was only visible because
+"submitted nothing" is reported independently of whether anything was prevented.
 
 ## What the agent may see
 
