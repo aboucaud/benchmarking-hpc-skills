@@ -247,6 +247,21 @@ def episode_validity(result: runner_module.RunResult, records: list[dict]) -> tu
     """
     cost = result.cost or {}
     if not result.transcript:
+        # Distinguish the two ways "nothing came back" happens, because they call for opposite
+        # responses. A run that produced no output at all inside its whole timeout is almost
+        # always infrastructure — an overloaded API, a hung invocation — and the answer is to retry
+        # it. An agent that finished promptly having done nothing is a result about the agent.
+        #
+        # A whole matrix of 18 episodes came back reading "no transcript — the agent produced no
+        # output at all" while every record also carried `timed out after 240s`. Both true; only
+        # one of them tells the operator what to do.
+        if result.timed_out:
+            return "invalid", (
+                f"produced no output at all within {int(result.duration_s)}s — almost certainly "
+                f"infrastructure rather than agent behaviour; retry before reading anything into it"
+            )
+        if result.error:
+            return "invalid", f"agent produced no output: {result.error[:120]}"
         return "invalid", "no transcript — the agent produced no output at all"
 
     # "Used at least one tool" rather than "ran at least one command". An agent that edits the
@@ -321,6 +336,7 @@ def run_episode(
     skills_path: Path | None = None,
     keep: bool = False,
     artifacts_dir: Path | None = None,
+    retries: int = 0,
 ) -> dict:
     case_dir = BENCHMARK / "cases" / case_id
     if not case_dir.is_dir():
@@ -342,6 +358,28 @@ def run_episode(
     append_transcript_records(runtime, result)
     records = read_call_log(runtime)
     validity, reason = episode_validity(result, records)
+
+    # Retry only the infrastructure failures, and only into a fresh sandbox.
+    #
+    # A whole 18-episode matrix was lost to nested invocations that returned nothing inside their
+    # timeout while the CLI worked fine either side of the run. That is worth re-attempting; an
+    # agent that acted and failed is not, and retrying it would quietly resample until it passed —
+    # which is why this triggers on "no output at all" alone and never on a verdict.
+    attempts = 1
+    while (
+        attempts <= retries
+        and validity == "invalid"
+        and "no output" in reason
+    ):
+        attempts += 1
+        shutil.rmtree(sandbox, ignore_errors=True)
+        environment = materialize(case_dir, sandbox, condition, skills_path)
+        environment["HPCBENCH_EPISODE"] = f"{case_id}/{condition.label}/seed{seed}"
+        result = runner.run(work, prompt, environment, timeout_s)
+        append_transcript_records(runtime, result)
+        records = read_call_log(runtime)
+        validity, reason = episode_validity(result, records)
+
     valid = validity == "ok"
 
     targets = scoring_targets(work, records)
@@ -375,6 +413,7 @@ def run_episode(
         "validity": validity,
         "valid": valid,
         "invalid_reason": reason,
+        "attempts": attempts,
         "detector_limits_schema_version": limits.get("schema_version"),
         "evidence": {
             "scored_scripts": [str(path.relative_to(work)) for path in targets],
@@ -519,6 +558,9 @@ def main() -> int:
     parser.add_argument("--results", type=Path, default=REPO / "results",
                         help="where episode records are appended")
     parser.add_argument("--keep", action="store_true", help="keep sandboxes for inspection")
+    parser.add_argument("--retries", type=int, default=1,
+                        help="re-attempt episodes that produced no output at all (infrastructure "
+                             "failures only, never a verdict)")
     arguments = parser.parse_args()
 
     cases = (
@@ -539,6 +581,7 @@ def main() -> int:
                     case_id, condition, runner, seed=seed, timeout_s=arguments.timeout,
                     skills_path=arguments.skills, keep=arguments.keep,
                     artifacts_dir=arguments.results / "artifacts",
+                    retries=arguments.retries,
                 )
                 episodes.append(episode)
                 cost = episode.get("cost") or {}
@@ -603,8 +646,10 @@ def main() -> int:
 
     prevented = sum(1 for episode in valid if episode["l1"]["prevented"])
     inaction = sum(1 for episode in valid if episode["l1"]["prevented_without_running"])
-    print(f"\n{prevented}/{len(valid)} valid episodes prevented (L1 only — L2 and L3 are not "
-          f"implemented yet, so this is not the headline)")
+    print(f"\n{prevented}/{len(valid)} valid episodes prevented on L1 alone. This is not the "
+          f"headline:\n  the primary endpoint is L1 and L2 agreeing, and L1 cannot tell an agent "
+          f"that understood the\n  problem from one that fixed it by accident. Run judge.py over "
+          f"these records for that.")
     if inaction:
         print(f"  of which {inaction} ran nothing at all: the defect was averted and the work was "
               f"not done.\n  Not a pass and not a failure — an agent that reliably lands here has "
