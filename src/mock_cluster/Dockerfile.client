@@ -1,0 +1,16 @@
+ARG BASE_IMAGE=mock-slurm-cluster:25-11-2-1
+FROM ${BASE_IMAGE}
+
+COPY client_proxy.py /usr/local/libexec/mock-cluster-slurm-client
+
+RUN set -eux \
+    && chmod 0755 /usr/local/libexec/mock-cluster-slurm-client \
+    && for command in \
+        sacct sacctmgr salloc sbatch scancel scontrol sdiag sinfo sprio \
+        squeue sreport srun sshare sstat; do \
+        test -x "/usr/bin/${command}"; \
+        ln -sfn /usr/local/libexec/mock-cluster-slurm-client "/usr/bin/${command}"; \
+    done
+
+ENV MOCK_CLUSTER_OBSERVER_HOST=observer \
+    MOCK_CLUSTER_OBSERVER_PORT=9473

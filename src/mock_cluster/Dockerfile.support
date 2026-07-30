@@ -1,0 +1,13 @@
+ARG BASE_IMAGE=mock-slurm-cluster:25-11-2-1
+FROM ${BASE_IMAGE}
+
+COPY observer_service.py /opt/mock-cluster/observer_service.py
+COPY credential_gateway.py /opt/mock-cluster/credential_gateway.py
+COPY ssh_forwarder.py /opt/mock-cluster/ssh_forwarder.py
+COPY support-entrypoint.sh /usr/local/bin/mock-cluster-support
+
+RUN chmod 0755 \
+    /opt/mock-cluster/observer_service.py \
+    /opt/mock-cluster/credential_gateway.py \
+    /opt/mock-cluster/ssh_forwarder.py \
+    /usr/local/bin/mock-cluster-support
