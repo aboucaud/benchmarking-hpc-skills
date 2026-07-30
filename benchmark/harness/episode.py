@@ -244,6 +244,57 @@ def scoring_targets(work: Path, records: list[dict]) -> list[Path]:
     return targets
 
 
+# Failures that belong to the harness's environment rather than to the agent under test.
+#
+# The distinction matters more here than the wording suggests. Every one of these strings means
+# "the episode never happened"; none of them means "the agent behaved badly". Reporting them
+# through the same channel as agent conduct is how a dead credential becomes a research finding.
+ENVIRONMENT_FAILURES = (
+    ("OAuth access token has been revoked", "authentication"),
+    ("authentication_failed", "authentication"),
+    ("Invalid API key", "authentication"),
+    ("Please run /login", "authentication"),
+    ("Credit balance is too low", "billing"),
+    ("rate_limit_error", "rate limit"),
+    ("overloaded_error", "API capacity"),
+)
+
+
+def environment_failure(result: runner_module.RunResult) -> tuple[str, str]:
+    """Name an environment failure in the runner's own output. Returns (kind, evidence).
+
+    A whole 90-episode matrix once came back reading `INVALID — no tool use, no commands and no
+    stub calls — nothing indicates the agent acted`. True, and useless: every record also carried
+    `API Error: 401 ... OAuth access token has been revoked`, which says exactly what went wrong
+    and exactly who has to fix it. The harness had the diagnosis in hand and reported the symptom.
+
+    Worth being precise about why this is not a cosmetic complaint. "The agent did nothing" is a
+    claim about the agent — it is the same sentence the harness prints for a model that read the
+    script and declined to act, which is a real and interesting behaviour. Printing it for a
+    revoked token puts a statement about the operator's credentials into the column reserved for
+    statements about model conduct.
+    """
+    texts: list[str] = []
+    for event in result.transcript or []:
+        if event.get("error"):
+            texts.append(str(event["error"]))
+        for block in ((event.get("message") or {}).get("content") or []):
+            if isinstance(block, dict) and block.get("type") == "text":
+                texts.append(str(block.get("text") or ""))
+        if event.get("type") == "result":
+            texts.append(str(event.get("result") or ""))
+    if result.error:
+        texts.append(result.error)
+    blob = "\n".join(texts)
+    for needle, kind in ENVIRONMENT_FAILURES:
+        if needle in blob:
+            line = next(
+                (part for part in blob.splitlines() if needle in part), needle
+            )
+            return kind, line.strip()[:160]
+    return "", ""
+
+
 def episode_validity(result: runner_module.RunResult, records: list[dict]) -> tuple[str, str]:
     """How much of this episode can be believed? Returns (validity, reason).
 
@@ -273,6 +324,17 @@ def episode_validity(result: runner_module.RunResult, records: list[dict]) -> tu
     recoverable; a fabricated numerator is not.
     """
     cost = result.cost or {}
+
+    # Ahead of the no-output branch, because that branch's wording ("no output") is what `--retries`
+    # keys on, and re-attempting a revoked token just spends the timeout again. Retry is for
+    # failures that might not recur; a dead credential recurs by definition.
+    kind, evidence = environment_failure(result)
+    if kind and not result.commands:
+        return "invalid", (
+            f"{kind} failed before the agent acted — this is the harness's environment, not the "
+            f"agent's conduct: {evidence}"
+        )
+
     if not result.transcript:
         # Distinguish the two ways "nothing came back" happens, because they call for opposite
         # responses. A run that produced no output at all inside its whole timeout is almost
@@ -445,6 +507,11 @@ def run_episode(
         "validity": validity,
         "valid": valid,
         "invalid_reason": reason,
+        # Empty unless the runner itself failed. Read by the run loop to decide whether continuing
+        # can produce anything, and by anyone auditing a results file after the fact — an operator
+        # handed 90 records has to be able to tell "the model never caught this" from "the token
+        # was dead", and `validity: invalid` alone does not carry that.
+        "environment_failure": environment_failure(result)[0],
         "attempts": attempts,
         "detector_limits_schema_version": limits.get("schema_version"),
         "evidence": {
@@ -659,10 +726,26 @@ def main() -> int:
     if arguments.matrix and not arguments.skills:
         print("note: --skills not given, so only the skills-none arm runs\n", file=sys.stderr)
 
+    # How many environment failures in a row before the run gives up.
+    #
+    # Not one: a single overloaded-API episode is worth riding out, and `--retries` already
+    # re-attempts those. Not never: the 90-episode matrix that motivated this spent four hours and
+    # produced a complete-looking results file in which every record was a revoked token. Three
+    # consecutive failures across different cases is not weather.
+    #
+    # The counter resets on any episode that runs, so a run that is merely flaky continues.
+    ABORT_AFTER = 3
+    consecutive_environment_failures = 0
+    aborted = ""
+
     episodes = []
     for case_id in cases:
+        if aborted:
+            break
         runner = build_runner(arguments.runner, arguments.model, case_id, arguments.max_turns)
         for condition in conditions:
+            if aborted:
+                break
             for seed in range(arguments.seeds):
                 episode = run_episode(
                     case_id, condition, runner, seed=seed, timeout_s=arguments.timeout,
@@ -673,12 +756,19 @@ def main() -> int:
                 episodes.append(episode)
                 cost = episode.get("cost") or {}
                 money = f" ${cost['usd']:.3f}" if cost.get("usd") else ""
+                if episode.get("environment_failure"):
+                    consecutive_environment_failures += 1
+                else:
+                    consecutive_environment_failures = 0
                 if episode["validity"] == "invalid":
                     print(
                         f"  {case_id:24s} {condition.label:34s} seed{seed}  "
-                        f"INVALID — {episode['invalid_reason'][:70]}",
+                        f"INVALID — {episode['invalid_reason'][:90]}",
                         flush=True,
                     )
+                    if consecutive_environment_failures >= ABORT_AFTER:
+                        aborted = episode["environment_failure"]
+                        break
                     continue
                 note = "  [PARTIAL]" if episode["validity"] == "partial" else ""
                 if episode["l1"]["prevented_without_running"]:
@@ -707,6 +797,23 @@ def main() -> int:
     spend = sum((episode.get("cost") or {}).get("usd") or 0 for episode in episodes)
 
     print()
+    if aborted:
+        # Before the invalid list, and before anything that looks like a number. A results file
+        # written by an aborted run covers a fraction of the matrix it was asked for, and the one
+        # way to make that dangerous is to let it print like a finished one.
+        print(
+            f"RUN ABORTED after {ABORT_AFTER} consecutive {aborted} failures.\n"
+            f"  {len(episodes)} of {len(cases) * len(conditions) * arguments.seeds} episodes were "
+            f"attempted. This is an environment failure, not a result:\n"
+            f"  nothing here says anything about any agent, and the cells that never ran are\n"
+            f"  missing rather than negative. Fix the environment and start again.\n"
+        )
+        if aborted == "authentication":
+            print(
+                "  For authentication specifically: the runner spawns a fresh CLI session per\n"
+                "  episode, so it needs credentials that are valid now — not the ones this\n"
+                "  process started with. Re-authenticate in an interactive terminal and re-run.\n"
+            )
     if invalid:
         # Loud, and never folded into the rate. An invalid episode says nothing about whether the
         # defect would have been caught, and counting it as a failure is how a broken run becomes a

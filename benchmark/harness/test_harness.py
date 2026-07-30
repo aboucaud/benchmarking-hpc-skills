@@ -476,7 +476,77 @@ def test_a_failed_invocation_is_invalid_not_a_failure():
     )
     validity, reason = episode_module.episode_validity(dead, [])
     assert validity == "invalid"
-    assert "nothing indicates the agent acted" in reason
+    assert "authentication failed" in reason
+
+
+def test_an_environment_failure_is_named_not_described_as_inaction():
+    """A revoked token is a statement about the operator, not about the model.
+
+    Verbatim from the transcript of a 90-episode matrix that failed end to end. Every record
+    carried this text, and every record was reported as `no tool use, no commands and no stub
+    calls -- nothing indicates the agent acted`: true, and the same sentence the harness prints
+    for a model that read the script and declined to act. The diagnosis was in hand and the
+    symptom got printed.
+    """
+    revoked = runners.RunResult(
+        exit_code=1,
+        transcript=[
+            {"type": "system", "subtype": "init"},
+            {"type": "assistant", "error": "authentication_failed", "message": {"content": [
+                {"type": "text", "text": 'API Error: 401 {"type":"error","error":'
+                                         '{"type":"authentication_error","message":"OAuth access '
+                                         'token has been revoked."}} · Please run /login'},
+            ]}},
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "API Error: 401 ... OAuth access token has been revoked."},
+        ],
+        cost={"is_error": True, "usd": 0, "turns": 1, "output_tokens": 0},
+    )
+    kind, evidence = episode_module.environment_failure(revoked)
+    assert kind == "authentication"
+    assert "revoked" in evidence
+
+    validity, reason = episode_module.episode_validity(revoked, [])
+    assert validity == "invalid"
+    assert "authentication failed before the agent acted" in reason
+    # The operator has to be able to tell whose problem this is from the reason alone.
+    assert "environment" in reason and "not the" in reason
+
+
+def test_an_environment_failure_is_not_retried():
+    """`--retries` keys on the no-output wording, and a dead credential recurs by definition.
+
+    The failure is only worth re-attempting when it might not happen again. Spending the timeout
+    twice on a revoked token turns a ten-minute abort into a twenty-minute one.
+    """
+    revoked = runners.RunResult(
+        exit_code=1,
+        transcript=[],
+        error="API Error: 401 OAuth access token has been revoked. Please run /login",
+    )
+    _, reason = episode_module.episode_validity(revoked, [])
+    assert "no output" not in reason
+    assert "authentication" in reason
+
+
+def test_an_agent_that_acted_despite_a_later_error_is_still_partial():
+    """The environment check must not swallow episodes that produced real work first.
+
+    B3 is the reason the `partial` state exists: the agent identified the defect, wrote the batch
+    script, rewrote the driver, and only then did the API refuse. Classifying that as an
+    environment failure would throw away a complete and correct repair sitting on disk.
+    """
+    worked_then_died = runners.RunResult(
+        commands=[{"ts": 1.0, "command": "sbatch preprocess.sh"}],
+        transcript=[
+            {"type": "result", "subtype": "success", "is_error": True,
+             "result": "API Error: rate_limit_error"},
+        ],
+        cost={"is_error": True, "result_text": "rate_limit_error", "usd": 0.2, "turns": 9},
+    )
+    validity, reason = episode_module.episode_validity(worked_then_died, [])
+    assert validity == "partial"
+    assert "acted, then" in reason
 
 
 def test_subtype_success_does_not_mean_success():
