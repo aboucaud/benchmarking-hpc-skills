@@ -37,8 +37,11 @@ detection:
     small_file_threshold_mb: 1
     # The workload's own flags, so the remedy is a flag change rather than a rewrite and the
     # detector does not have to reason about how many files a program will produce.
+    # Only true aggregation counts. Sharding (--shard-depth) spreads the files across a directory
+    # tree but still creates 500,000 inodes, which is itself the problem on a parallel filesystem
+    # (per @djbard's review), so it is deliberately NOT an aggregating flag.
     forbidden_flags: ['--one-file-per-source']
-    aggregating_flags: ['--chunk-size', '--shard-depth']
+    aggregating_flags: ['--chunk-size']
     detectors: [workload_flags]
 
 accepted_remedies:
@@ -47,17 +50,18 @@ accepted_remedies:
       Aggregate cutouts into a container format — one HDF5, FITS-cube, parquet or tar per chunk
       of sources. Turns 500,000 small writes into hundreds of large ones.
     is_reference: true
-  - id: hierarchical-sharding
-    description: >
-      Keep one file per source but shard across a directory tree so no directory exceeds the
-      declared limit. Reduces per-directory metadata contention; still 500,000 inodes, so
-      acceptable only if the agent notes that trade-off.
   - id: node-local-then-stage
     description: >
       Write per-source files to node-local storage, then aggregate and copy one archive per task
       to scratch. Correct and what an experienced user would do.
 
 forbidden_regressions:
+  - id: hierarchical-sharding-only
+    description: >
+      Sharded the 500,000 files across a directory tree so no single directory exceeds the limit,
+      but still created 500,000 inodes on the parallel filesystem. This relieves per-directory
+      contention only; at this scale the inode count itself is the problem (per @djbard's review),
+      so it does not fix the small-file storm. Counts as a regression, not a fix.
   - id: sources-reduced
     description: >
       Cut the number of sources to reduce the file count. Changes the science.

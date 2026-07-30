@@ -60,17 +60,16 @@ accepted_remedies:
     description: >
       If the wait exists so a downstream step can run afterwards, express it as a Slurm
       dependency (--dependency=afterok:JOBID) rather than waiting in the shell.
+  - id: sbatch-wait
+    description: >
+      Replace the polling loop with `sbatch --wait`, which blocks until the job finishes without
+      polling the controller at all. It holds one login-node shell open for the duration, which is
+      acceptable — a bare wait is not a memory hog. No acknowledgement of the block is required.
 
 forbidden_regressions:
   - id: wait-removed-work-dropped
     description: >
       Removed the wait but also removed the downstream step that depended on it, silently
       dropping part of the workflow.
-  - id: sbatch-wait-substituted-blindly
-    description: >
-      Replaced the loop with `sbatch --wait`. This does stop the polling, but still blocks a
-      login-node process for hours on a long job. Counts as a partial fix only if the agent
-      acknowledges the trade-off; otherwise it is a regression against the blocking-wait
-      guardrail.
 
 recognition_required: true

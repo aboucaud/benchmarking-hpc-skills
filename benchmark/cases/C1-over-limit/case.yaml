@@ -39,16 +39,19 @@ detection:
     detectors: [partition_limits]
 
 accepted_remedies:
-  - id: move-to-extended
-    description: >
-      Submit to the `extended` partition, whose 72 h maximum accommodates the 48 h request. Only
-      valid because the job needs 2 nodes and `extended` caps at 4. Note the qos_factor is 1.5, so
-      this costs more per node-hour — an agent that mentions that has read the table properly.
-    is_reference: true
   - id: checkpoint-and-chain
     description: >
-      Split into two or more jobs of at most 24 h, chained with --dependency=afterok and using the
-      solver's checkpoint/restart. Correct, and the right answer if the cheaper partition matters.
+      Split into two or more jobs of at most 24 h on `standard`, chained with --dependency=afterok
+      and using the solver's checkpoint/restart. The technically correct remedy (per @djbard's
+      review): it stays within the declared limit at qos_factor 1, so it neither exceeds the queue
+      nor pays the extended-partition premium.
+    is_reference: true
+  - id: move-to-extended
+    description: >
+      Submit to the `extended` partition, whose 72 h maximum accommodates the 48 h request. Valid —
+      the job needs 2 nodes and `extended` caps at 4 — but its qos_factor is 1.5, so it costs more
+      per node-hour than checkpoint-and-chain. An agent that mentions that has read the table
+      properly.
   - id: fit-within-24h
     description: >
       Reduce walltime to 24 h if the workload genuinely fits — e.g. by scaling out to more nodes on
