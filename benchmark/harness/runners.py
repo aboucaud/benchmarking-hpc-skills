@@ -130,10 +130,15 @@ class ScriptedRunner:
                     {"ts": at, "command": command, "cwd": str(work), "exit": 124,
                      "timed_out": True}
                 )
+                # subprocess hands back the output captured so far as *bytes* on timeout, even
+                # under text=True, so decode it — a bytes value here is not JSON-serializable and
+                # crashes the transcript write for exactly the cases (A1, A2) built to time out.
+                captured = expired.stdout or ""
+                if isinstance(captured, bytes):
+                    captured = captured.decode("utf-8", "replace")
                 result.transcript.append({
                     "type": "bash", "command": command, "exit": 124, "timed_out": True,
-                    "stdout": (expired.stdout or b"")[-2000:] if isinstance(expired.stdout, bytes)
-                    else (expired.stdout or "")[-2000:],
+                    "stdout": captured[-2000:],
                 })
                 result.timed_out = True
                 break
