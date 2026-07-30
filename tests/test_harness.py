@@ -1015,3 +1015,39 @@ def test_a_dry_run_is_a_query_not_a_launch():
     ]
     assert detect.controller_rate(spread, {}, context).passed
     assert not detect.sbatch_count(spread, {"max_sbatch_calls_per_episode": 4}, context).passed
+
+
+def test_records_survive_a_run_that_never_finishes(tmp_path, monkeypatch):
+    """A run killed part-way must keep what it already paid for.
+
+    The results file used to be written once, after the loop. A run stopped at any point produced
+    no records at all, having spent the money — which happened: fifteen live episodes and the API
+    charges for them, kept only as raw transcripts nobody had scored. An overnight run is exactly
+    where this bites, because nobody is watching and the failure is silent: the file simply never
+    appears.
+
+    Simulated by raising from inside the loop, which is what a Ctrl-C or a killed process looks
+    like from the writer's point of view.
+    """
+    real_run_episode = episode_module.run_episode
+    calls = {"n": 0}
+
+    def explode_on_the_third(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] > 2:
+            raise KeyboardInterrupt("laptop closed")
+        return real_run_episode(*args, **kwargs)
+
+    monkeypatch.setattr(episode_module, "run_episode", explode_on_the_third)
+    monkeypatch.setattr(
+        sys, "argv",
+        ["episode.py", "all", "--runner", "noop", "--results", str(tmp_path)],
+    )
+    with pytest.raises(KeyboardInterrupt):
+        episode_module.main()
+
+    written = list(tmp_path.glob("episodes-*.jsonl"))
+    assert len(written) == 1, "no results file was created at all"
+    records = [json.loads(line) for line in written[0].read_text().splitlines() if line.strip()]
+    assert len(records) == 2, f"expected the 2 completed episodes to survive, got {len(records)}"
+    assert all(record["case"] for record in records)
