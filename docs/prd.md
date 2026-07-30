@@ -246,6 +246,18 @@ A1's provenance is a real NERSC incident described at the summit; it is not inve
        └──────────────────────────────────────────────────────────────┘
 ```
 
+**A smoke test always precedes a full run.** One case × the four conditions, on whichever
+substrate the full run will use, before any full matrix — both the LLM matrix and any full
+run against the mock Slurm controller. This is a standing rule of the design, not a
+judgement call taken per run: the cost of a smoke test is one case, and the cost of
+skipping it is discovering a setup problem after the whole matrix has been spent on it.
+
+It has already paid for itself. The first live runs surfaced nine harness defects and a
+substrate that lied in four ways — `mkdir` reporting scratch read-only, `sbatch --test-only`
+actually submitting, `sinfo -o` ignoring its format string, `sstat` missing — each of which
+punished an agent for behaving correctly, and all of which would have been baked into a full
+matrix run first.
+
 **Why the stubs must lie convincingly:** if `sbatch` returns nothing useful the agent
 stalls and the benchmark measures *confusion* instead of judgment. Rejections use Slurm's
 own wording so a doc-absent agent can still *discover* a limit by submitting and reading the
@@ -363,6 +375,10 @@ mode under study.
 
 ## 9. Open questions requiring a decision
 
+**Decided in review, 2026-07-30.** Each question below is answered inline as
+**→ Decision:**. Two carry a flag where the recording was ambiguous and the answer changes
+what gets measured; those need one word of confirmation before anyone acts on them.
+
 Ordered by how much they block progress.
 
 ### Blocking the first result
@@ -373,9 +389,22 @@ Ordered by how much they block progress.
    (is sharding fine at 500k inodes on a real parallel FS?), C1 (is the simple-but-expensive
    `extended` reference remedy the right one, given `qos_factor 1.5`?), B3 (L3 structurally
    understates harm outside the charging model).
+
+   **→ Decision: still open, and it is the next thing done.** Not deferred — a full review
+   of `center.yaml` *and* of the way each case poses its question, before any number is
+   quoted. Tracked in [#10](https://github.com/aboucaud/benchmarking-hpc-skills/issues/10).
+   Every run already prints how many cases lack sign-off and states the result is a pilot.
+
 2. **First `claude-code` run protocol (owner: @aboucaud).** It costs tokens and is the first
    number anyone will quote. **Smoke test (1 case × 4 conditions) first, or the full
    9×4×3 straight away?**
+
+   **→ Decision: a smoke test always precedes a full run, as a standing rule of the design
+   rather than a one-off choice for the first run.** Written into [§4.5](#45-episode-flow).
+   It applies to both substrates — before a full LLM matrix, and before a full run on the
+   mock Slurm controller. The point is to stumble on setup problems while they are cheap.
+   This is retrospectively confirmed: the first live runs surfaced nine harness defects and
+   a substrate that lied in four ways, all of which would have corrupted a full matrix.
 
 ### Blocking cross-validation / the second substrate
 3. **Substrate drift (owners: @dkn16 + @aboucaud).** Should `mock-cluster/slurm.conf` adopt
@@ -383,35 +412,81 @@ Ordered by how much they block progress.
    Docker cluster's shape? Assumption so far: the descriptor is canonical because the cases
    are written against it — but that is a decision, not a fact.
 
+   **→ Decision: adopt the generated config.** One config, generated from `center.yaml`,
+   valid for every test we want to run — not one per substrate. `center.yaml` is canonical.
+   @dkn16 is already working on it.
+
 ### Scope & framing
 4. **Headline endpoint.** Confirmed for the MVP as **damage-free / cases-prevented** (top
    sysadmin priority), with wasted node-hours secondary. Re-confirm that L1∧L2 "prevented"
    is *the* number and L1-alone is explicitly not.
+
+   **→ Decision: confirmed. Damage-free comes first**, wasted node-hours second. Avoiding
+   the damage is what we want from the agent's behaviour; the cost is the follow-on
+   question, not the headline.
+
 5. **Model axis.** Promoted into the MVP and reframed as procurement ("cheapest model tier a
    center can host and still get a well-behaved agent"). Confirm it stays in scope for the
    hack.
+
+   **→ Decision: in scope, with the framing sharpened.** The MVP runs an *affordable* model
+   a centre could realistically host — not necessarily the cheapest. **Out of MVP scope,
+   explicitly Phase 2:** whether a *more capable* agent still needs the instructions and
+   skills at all. That is a genuinely interesting question and a different experiment; it
+   does not belong in the first result.
+
 6. **Not telling the agent it is being evaluated.** Standard for evals and already
    implemented in the generated doc — but the kind of choice to agree on out loud rather
    than discover in a results table.
+
+   **→ Decision: ⚠️ NEEDS ONE WORD OF CONFIRMATION.** The recording reads *"yes, of course,
+   we need to tell the agent it's being evaluated — write this clearly inside this PRD"*,
+   which can be heard either as agreeing with this item **as titled** (keep *not* telling,
+   and state the choice explicitly) or as **reversing** it (do tell). The two produce
+   different measurements and are not reconcilable after the fact, so this is recorded
+   rather than guessed. **Implemented behaviour is unchanged — the agent is not told** —
+   because that is the current code, the standard for evals, and the reading that does not
+   invalidate work already done. Say which and it is a one-line change either way.
 
 ### Repo hygiene / consumed-skill alignment
 7. **`src/` vs `benchmark/` layout.** PR #2 proposes code in `src/hpcbench/` with
    `benchmark/` for data; the implementation stack (#7–#9) actually landed code under
    `benchmark/harness/`, `benchmark/stubs/`, `benchmark/render.py`. Pick one before more
    code lands on the current shape.
+
+   **→ Decision: Python moves to `src/`,** the usual convention; `benchmark/` keeps the
+   data — cases, `center.yaml`, generated outputs. The repo is already called
+   *benchmarking-hpc-skills*, so a `benchmark/` prefix on the code adds nothing. PR #2's
+   shape wins; the implementation stack moves to it.
+
 8. **Retire the pre-stack skeletons.** `benchmark/inspect/` and `benchmark/prompt-format/`
    (and `INSTRUCTIONS.sample.md`, now superseded by the generated doc) predate the MVP
    substrate. Plan of record: keep as reference, retire/relabel as the harness lands
    equivalents.
+
+   **→ Decision: remove them, not keep them as reference.** The plan has moved too far for
+   them to be informative, and a stale skeleton in the tree reads as a live option.
 
 ### Upstream / cross-project
 9. **Upstream the `center.yaml` executable-spec schema** to the summit's `INSTRUCTIONS.md`
    effort, so the "one descriptor generates doc + simulator + detector limits" property is
    shared rather than local? Plan of record: prove it locally first, then bring it as a
    working artifact, not a design.
+
+   **→ Decision: goal restated, because "upstream the schema" did not convey it.** The set
+   of instructions is not settled. This benchmark is how we find out what belongs in them —
+   so what gets upstreamed is **what the benchmark teaches us about the instructions**, of
+   which the descriptor schema is one carrier. That is the end goal of the project, not a
+   side errand. Still: prove it locally first, then bring a working artifact.
+
 10. **Template wording bug found by the harness.** The `INSTRUCTIONS.md` template's *"one
     request per minute to the controller (`sbatch`/`squeue`/`sacct`)"* conflates polling
     with launches and, read literally, forbids every legal multi-job dependency chain (it
     fails A2's own reference remedy). The harness now accounts queries and launches
     separately — this should be fixed in the shared template so any center adopting it
     doesn't inherit the error.
+
+    **→ Decision: fix the wording** so it makes sense to the agent reading it. Already
+    corrected in the generated doc (`render.py`, PR #8), where the rate limit now names
+    *polling* rather than submission. The same correction goes to the shared template so no
+    centre adopting it inherits the error.
