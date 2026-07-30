@@ -72,31 +72,28 @@ Phase 2.
 
 ## 3. Current status
 
+The full MVP stack has merged to `main` (PRs #4–#9): the Docker mock cluster, the nine
+misuse cases, `center.yaml` and its generated consumers, the fifteen echo-stub Slurm
+commands, `render.py`, and the episode harness with the L1 detectors and the L2/L3 judge.
+
 ```
-LEGEND   ✅ merged to main    🔨 built, open PR, unmerged    📄 doc only    ⏸ deferred (Phase 2)
+LEGEND   ✅ merged to main    ⏸ open/closed, deferred to Phase 2
 
-main ──┬─ ✅ #4  Docker mock Slurm cluster            (mock-cluster/)
-       └─ ✅ #5  MVP design doc + worked case A1      (docs/mvp-misuse-benchmark.md, cases/A1)
-
-open, independent
-   🔨 #2  Agentic workspace: .claude/, uv, ruff, pytest, CI, conventions
-   📄 #3  Ambitious methodology (simulator, measured node-hours) → retained as Phase-2 target
-
-open implementation stack (each stacked on the previous; merge bottom-up)
-   #6  🔨 remaining 8 cases + center.yaml + validate_cases.py      ← retargets to main after #5
-    └ #7  🔨 15 echo-stub Slurm commands (the substrate)
-       └ #8  🔨 render.py: generate all consumers of center.yaml + drift report
-          └ #9  🔨 episode harness + L1 detectors + judge scaffolding (L2/L3 stubbed)
+✅ #4  Docker mock cluster        ✅ #6  cases + center.yaml + validator   ✅ #8  render.py + drift
+✅ #5  MVP design + case A1        ✅ #7  echo-stub substrate               ✅ #9  harness + L1 + judge
+⏸ #2  agentic workspace (open, deferred)     ⏸ #3  ambitious methodology → Phase-2 target (closed)
 ```
 
-**What works today (verified in the PR branches):** all 9 cases pass the validator; 57
-stub tests; 16–17 render tests; 64 harness tests; the harness self-test shows the detector
-set produces both bounds (`scripted-asis` → 0/9 prevented, `scripted-reference` → 9/9).
+**Verified:** all 9 cases pass the validator; 65 stub / 17 render / 130 harness+judge tests;
+the harness self-test produces both calibration bounds (`scripted-asis` → 0/9,
+`scripted-reference` → 9/9 prevented).
 
-**What does not exist yet:** the L2/L3 LLM judge is scaffolding only; no agent has been run
-(the `claude-code` runner is implemented but unexercised — it costs a model budget nobody
-has authorized); and **no case has passed the sysadmin review gate**, so no number yet
-counts as evidence.
+**Run once, for real.** The first live run has happened — 90 episodes, `skills-none` only —
+so this document's earlier *"no agent has been run"* no longer holds. What it showed, what it
+does *not*, and the decisions it forces are in [`first-run-results.md`](first-run-results.md).
+The gate is unchanged: **no case has sysadmin sign-off**
+([#10](https://github.com/aboucaud/benchmarking-hpc-skills/issues/10)), so every number reads
+as a pilot, not evidence.
 
 ---
 
@@ -331,17 +328,14 @@ case cross-validates. A drop-in generated config exists; adopting it is @dkn16's
 
 ---
 
-## 6. Threats to validity (carried from the design doc)
+## 6. Threats to validity
 
-| Threat | Response |
-|---|---|
-| Repair ≠ restraint | Stated wherever the number is quoted. Generation cases → Phase 2. |
-| Synthetic cases may not resemble real jobs | Minimal archetypes first for reviewability; sysadmin review gate; Phase 2 re-runs against doctored real scripts. |
-| Synthetic eval on synthetic cases | Stubs give real evidence of *conduct*; only consequences are inferred. L1 needs no LLM. |
-| Judge error | Two runs, disagreement flagged, human spot-check, versioned prompts. |
-| L3 is speculation | Coarse buckets, secondary, discardable without losing the L1/L2 result. |
-| 9 cases × 3 seeds is low power | Report **per-case** outcomes — at N=9 the content is *which* cases the skill catches, not a rate + CI. |
-| Agent could read the rubric | `case.yaml`/`rubric.md`/`reference.sh` withheld; checked by content, not filename. |
+The full table lives in the design doc
+([`mvp-misuse-benchmark.md`](mvp-misuse-benchmark.md#threats-to-validity)) and is not duplicated
+here. The headline caveats: repair ≠ restraint (stated wherever a number is quoted); node-hours
+are semi-synthetic (L3, a secondary endpoint); the judge is kept honest by two runs plus a human
+spot-check; and nine cases × a few seeds is underpowered — results are reported per-case, not as a
+rate, and the live runs bore that out (a third of the grid is unstable across seeds).
 
 ---
 
