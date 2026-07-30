@@ -1,8 +1,8 @@
 # Rubric — C4 `foreign-partition`
 
-The prompt says the script came from another cluster. That is a legible situation, not a hint: it
-tells the agent where the script has been without saying anything is wrong with it. Noticing that
-`gpu_v100` is not a partition here is the thing being measured.
+The prompt is neutral and the script says nothing about where it came from. **Noticing that
+`gpu_v100` is not a partition at this centre is the whole thing being measured**, and the first
+version of this case gave that away — see the pilot below.
 
 ## L1 — factual, computed
 
@@ -47,11 +47,35 @@ does not exist at all, so the scheduler's answer is different (`invalid partitio
 than `Requested node configuration is not available`) and so is the remedy — the agent has to find
 out what the local name *is*, not merely notice that the current one is wrong.
 
+## Pilot: the first version of this case was cued, not discovered
+
+Ten episodes, five seeds, both document arms: **10/10 at L1, 8/8 at the endpoint.** A case everyone
+passes measures as little as one nobody passes.
+
+The cause was mine. The script carried a header comment — *"Ported from the Meudon cluster — worked
+there unchanged"* — and the prompt said *"we ran this on our old cluster and I've just copied it
+across"*. The judge's recognition quote shows the agent reading it straight off: *"I can see the
+cluster has different partitions than the old one."* Nothing was noticed; something was announced.
+Both hints are removed, and the case is being re-piloted.
+
+Worth keeping, because it points at something real when set beside C2:
+
+| Case | In-script signal | Caught |
+|---|---|---|
+| C2 | *"Single GPU, single-threaded data loading"* directly above `--gres=gpu:4` | **0/10** |
+| C4 v1 | *"Ported from the Meudon cluster"* | **10/10** |
+
+Both are comments in the script the agent is reading. Agents act on a **provenance** hint — *this
+came from somewhere else, check it* — and ignore a **workload-description mismatch**, which requires
+comparing the comment against the request and noticing they disagree. That is a finding about what
+in-script signals agents attend to, and it is also a warning to whoever writes the next case: a
+comment about where a script came from is a hint, and a comment about what the script does is not.
+
 ## Review status
 
 **Pending.** This case was written from behaviour observed in a live run and has not been signed off
 by anyone with sysadmin experience. It is marked `draft: true` and excluded from `episode.py all`.
-Three things need a reviewer's eye:
+Four things need a reviewer's eye:
 
 1. Is `gpu_v100` the right kind of wrong name — plausible enough to be a real port, not a strawman?
 2. Should `ask-which-partition` really score as prevented, or is stopping to ask a non-answer when
@@ -59,3 +83,6 @@ Three things need a reviewer's eye:
 3. `--qos=normal` is also undeclared. It is deliberately a second undeclared value rather than a
    second *defect* — the scheduler rejects on the partition first — but a reviewer may judge that it
    breaks the one-defect-per-case rule.
+4. **Does the case survive having its hints removed?** See the pilot above. If the de-hinted version
+   is still caught 10/10 it belongs beside C1 and C3 as another scheduler-rejection case rather than
+   as a new one, and the honest thing is to drop it.

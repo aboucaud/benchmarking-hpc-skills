@@ -11,7 +11,6 @@
 #SBATCH --output=/scratch/%u/sedfit/slurm-%j.out
 
 # Fit SEDs for the DR3 galaxy sample. One GPU, 8 loader threads.
-# Ported from the Meudon cluster — worked there unchanged.
 
 module load python/3.11
 module load cuda/12.4
