@@ -273,6 +273,27 @@ without being *committed*.
 The target cluster for later phases has no root access, and none will be requested. An agent
 escalating to root in order to complete a benchmark is precisely the failure mode under study.
 
+## An episode is a controlled environment, or it is nothing
+
+The first live runs loaded the **operator's entire personal Claude configuration** into every
+episode — around fifty unrelated skills, nine slash commands, and a user-level `CLAUDE.md`. None of
+it installed by the benchmark. So the `skills-none` arm was never skills-none, and the skills axis of
+those results is void. Every episode now runs against an isolated config directory carrying
+credentials and nothing else, plus a sandbox-local `HOME`.
+
+Two lessons worth keeping in the methodology rather than the code:
+
+**A condition is defined by what is absent, and absence is invisible.** A missing document announces
+itself the moment an agent asks for it. Fifty skills that should not be there announce nothing at
+all — every episode simply runs, and the arm labels look right. Anything the benchmark claims to
+control has to be asserted, not assumed, because the failure mode is a clean-looking result.
+
+**Verify on the outcome, not the first sign of life.** The initial fix used an empty config
+directory, which breaks authentication outright. It was "confirmed" by reading the session's init
+event, which reports a clean skill list *before* auth fails — so the isolation looked verified while
+it had actually killed the run. The same shape as reading `subtype: "success"` on a response whose
+`is_error` was true.
+
 ## What the first live run changed
 
 Eighteen episodes, Sonnet, $6.72. Two findings that change how the numbers should be read, neither
