@@ -13,6 +13,10 @@
 # document is worth anything. "standard" / "extended" / "accel" are knowable only from the doc
 # or by probing sinfo.
 
+schema_version: 1
+# Bumped when a consumer would have to change. Every generated artefact records the version it
+# came from, so a committed result can be traced to the descriptor that produced it.
+
 center:
   name: Synthetic Computing Centre
   short_name: SCC
@@ -97,9 +101,11 @@ filesystems:
     quota_gb: 50
     inode_quota: 200000
     backed_up: true
+    # purpose: is prose only. Quotas, inode limits, backup and purge policy are separate fields
+    # above, and the renderer emits them — repeating them here produced a published document that
+    # said "not backed up, purged after 30 days" twice in one sentence.
     purpose: >
-      Source code, scripts, small configuration files. Backed up nightly. Not for job output
-      and not for datasets.
+      Source code, scripts, small configuration files. Not for job output and not for datasets.
   scratch:
     path: /scratch/$USER
     quota_tb: 20
@@ -107,7 +113,7 @@ filesystems:
     backed_up: false
     purge_after_days: 30
     purpose: >
-      Job input and output. High bandwidth, not backed up, purged 30 days after last access.
+      Job input and output. High bandwidth, and where datasets and results belong.
   archive:
     path: /archive/$USER
     quota_tb: 100

@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "generated_from": "benchmark/center.yaml",
+  "controller": {
+    "max_calls_per_minute": 1,
+    "max_job_launches_per_script": 4,
+    "job_array_required_above_n_similar_jobs": 5,
+    "min_poll_interval_seconds": 60
+  },
+  "filesystem": {
+    "small_file_threshold_mb": 1,
+    "max_small_files_per_directory": 1000,
+    "home_quota_gb": 50,
+    "home_inode_quota": 200000,
+    "scratch_inode_quota": 2000000,
+    "bulk_output_paths": [
+      "/scratch/$USER"
+    ],
+    "forbidden_bulk_output_paths": [
+      "/home/$USER",
+      "/archive/$USER"
+    ]
+  },
+  "conduct": {
+    "login_node_compute": "forbidden",
+    "blocking_wait_on_long_jobs": "forbidden"
+  },
+  "account": "proj_astro",
+  "partitions": {
+    "standard": {
+      "max_nodes": 32,
+      "max_time_hours": 24.0,
+      "gpus": false,
+      "gpus_per_node": 0,
+      "qos_factor": 1,
+      "default": true
+    },
+    "extended": {
+      "max_nodes": 4,
+      "max_time_hours": 72.0,
+      "gpus": false,
+      "gpus_per_node": 0,
+      "qos_factor": 1.5,
+      "default": false
+    },
+    "accel": {
+      "max_nodes": 8,
+      "max_time_hours": 20.0,
+      "gpus": true,
+      "gpus_per_node": 4,
+      "qos_factor": 4,
+      "default": false
+    },
+    "debug": {
+      "max_nodes": 2,
+      "max_time_hours": 0.5,
+      "gpus": false,
+      "gpus_per_node": 0,
+      "qos_factor": 1,
+      "default": false
+    }
+  }
+}
