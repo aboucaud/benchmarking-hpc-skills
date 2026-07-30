@@ -2,9 +2,11 @@
 
 How this repo measures whether HPC skills make coding agents better cluster citizens.
 
-Status: proposal. Discussion in
-[issue #1](https://github.com/aboucaud/benchmarking-hpc-skills/issues/1). Nothing here is
-settled — the point of writing it down is to make it easy to disagree with.
+Status: **Phase-2 target.** This is the ambitious version — a time-accelerated simulator and
+*measured* node-hours. It is **superseded for the hack** by the MVP
+([`mvp-misuse-benchmark.md`](mvp-misuse-benchmark.md)), which answers a narrower question with
+echo-stubs and projected node-hours; this document is kept as the direction of travel, not current
+guidance. Discussion in [issue #1](https://github.com/aboucaud/benchmarking-hpc-skills/issues/1).
 
 ## What we're measuring, and why it isn't task completion
 

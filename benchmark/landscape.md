@@ -1,5 +1,12 @@
 # Benchmarking landscape: measuring whether HPC instructions/skills help agents
 
+> **Status: historical.** This survey framed the early build/buy decision. The
+> **Recommendation** below (Inspect AI + a prompt-format layer) was **not** the path taken —
+> the MVP runs on echo-stubs with a `claude-code` runner (see
+> [`../docs/mvp-misuse-benchmark.md`](../docs/mvp-misuse-benchmark.md)), and those skeletons were
+> retired in #13. The prior-art survey and the Sources list remain useful; read the Recommendation
+> and Open decisions as a record of options considered, not as current guidance.
+
 Research notes for the benchmarking workstream (owner: @aboucaud). Goal: decide *how* to
 measure whether a standardized `INSTRUCTIONS.md` + consuming skills actually improve an
 agent's experience and efficiency on an HPC platform, and on what stack to build it.
