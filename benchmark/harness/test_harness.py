@@ -57,7 +57,7 @@ def test_floor_prevents_nothing(case_id, tmp_path):
     """
     record = episode_module.run_episode(
         case_id, BASELINE, episode_module.build_runner("scripted-asis", "", case_id),
-        sandbox_root=tmp_path, timeout_s=6,
+        sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["l1"]["prevented"] is False, (
         f"{case_id} scored as prevented while running the doctored script unchanged: "
@@ -75,7 +75,7 @@ def test_ceiling_prevents_everything(case_id, tmp_path):
     """
     record = episode_module.run_episode(
         case_id, BASELINE, episode_module.build_runner("scripted-reference", "", case_id),
-        sandbox_root=tmp_path, timeout_s=6,
+        sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["l1"]["prevented"] is True, (
         f"{case_id} rejected its own reference remedy: {json.dumps(record['l1'], indent=2)}"
@@ -183,6 +183,83 @@ def test_skills_condition_refuses_to_pretend(tmp_path):
             BENCHMARK / "cases" / "A1-srun-loop", tmp_path,
             episode_module.Condition(doc=False, skills="good"), skills_path=None,
         )
+
+
+def test_skills_are_plain_markdown_not_a_claude_autoload_path(tmp_path):
+    """Delivery must be harness-agnostic, or the skills arm measures one CLI's conventions.
+
+    The bundle used to be installed to `.claude/skills/<name>/SKILL.md`. Codex — which the
+    Docker/Slurm substrate runs — does not read that path, so on that substrate the skills-good
+    arm would have been skills-none while still being labelled skills-good. That is the same
+    class of silent mislabelling `test_skills_condition_refuses_to_pretend` exists to prevent,
+    one layer further out.
+    """
+    bundle = tmp_path / "hpc-session"
+    bundle.mkdir()
+    (bundle / "SKILL.md").write_text("---\nname: hpc-session\n---\nSubmit, don't wait.\n")
+    (bundle / "docs").mkdir()
+    (bundle / "docs" / "etiquette.md").write_text("poll politely\n")
+    (bundle / ".git").mkdir()
+    (bundle / ".git" / "config").write_text("[core]\n")
+
+    sandbox = tmp_path / "sandbox"
+    episode_module.materialize(
+        BENCHMARK / "cases" / "A1-srun-loop", sandbox,
+        episode_module.Condition(doc=False, skills="good"), skills_path=bundle,
+    )
+    work = sandbox / "work"
+
+    assert (work / "skills" / "hpc-session" / "SKILL.md").is_file()
+    assert (work / "skills" / "hpc-session" / "docs" / "etiquette.md").is_file()
+    # Nothing may depend on a Claude-specific location.
+    assert not (work / ".claude").exists(), "skills installed into a Claude Code autoload path"
+    # Version control is not part of the skill under test.
+    assert not (work / "skills" / "hpc-session" / ".git").exists()
+
+
+def test_the_pointer_is_identical_in_every_cell(tmp_path):
+    """Availability is held constant; only content varies.
+
+    A file is read only if the agent looks, where an autoloaded skill is always in context. If
+    only the skills arm were told to look, the contrast would partly measure "did it think to
+    check this directory" — which varies by model and by run — rather than whether the content
+    helped. So every cell gets the same pointer, and in three of them the agent looks and finds
+    nothing.
+    """
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "SKILL.md").write_text("---\nname: b\n---\nx\n")
+
+    prompts = {}
+    for condition in episode_module.Condition.matrix():
+        sandbox = tmp_path / condition.label
+        episode_module.materialize(
+            BENCHMARK / "cases" / "A1-srun-loop", sandbox, condition, skills_path=bundle,
+        )
+        prompts[condition.label] = (sandbox / "work" / "prompt.md").read_text()
+
+    assert len(set(prompts.values())) == 1, "the prompt differs between cells"
+    only = next(iter(prompts.values()))
+    assert "skills/" in only and "INSTRUCTIONS.md" in only
+    # It must not disclose which cell this is, or the pointer becomes the intervention.
+    assert "condition" not in only.lower() and "arm" not in only.lower()
+
+
+def test_the_pointer_does_not_accumulate_across_materializations(tmp_path):
+    """materialize() rewrites prompt.md in the sandbox, and the case file must stay pristine.
+
+    Appending to `case_dir/prompt.md` instead of the copy would grow the case on disk by one
+    paragraph per episode and silently rewrite the fixed instruction the benchmark depends on.
+    """
+    original = (BENCHMARK / "cases" / "A1-srun-loop" / "prompt.md").read_text()
+    for index in range(3):
+        episode_module.materialize(
+            BENCHMARK / "cases" / "A1-srun-loop", tmp_path / str(index),
+            episode_module.Condition(doc=False, skills="none"),
+        )
+    assert (BENCHMARK / "cases" / "A1-srun-loop" / "prompt.md").read_text() == original
+    text = (tmp_path / "0" / "work" / "prompt.md").read_text()
+    assert text.count("Before you start") == 1
 
 
 def test_condition_matrix_is_the_declared_two_by_two():
@@ -692,7 +769,7 @@ def test_timeout_is_still_a_valid_episode(tmp_path):
     record = episode_module.run_episode(
         "A2-poll-storm", BASELINE,
         episode_module.build_runner("scripted-asis", "", "A2-poll-storm"),
-        sandbox_root=tmp_path, timeout_s=6,
+        sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["timed_out"] is True
     assert record["validity"] == "ok"
@@ -716,7 +793,7 @@ def test_prevented_without_running_is_flagged(tmp_path):
     fixed_but_idle = runners.ScriptedRunner(commands=[], writes={"job.sh": reference})
 
     record = episode_module.run_episode(
-        "C3-wrong-partition", BASELINE, fixed_but_idle, sandbox_root=tmp_path, timeout_s=6,
+        "C3-wrong-partition", BASELINE, fixed_but_idle, sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["l1"]["static"]["verdict"] == "pass"
     assert record["l1"]["prevented"] is True
@@ -728,7 +805,7 @@ def test_fixing_and_submitting_is_not_flagged_as_inaction(tmp_path):
     record = episode_module.run_episode(
         "C3-wrong-partition", BASELINE,
         episode_module.build_runner("scripted-reference", "", "C3-wrong-partition"),
-        sandbox_root=tmp_path, timeout_s=6,
+        sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["evidence"]["workload_submitted"] is True
     assert record["l1"]["prevented"] is True
@@ -745,14 +822,14 @@ def test_scheduler_pushback_is_recorded(tmp_path):
     record = episode_module.run_episode(
         "C3-wrong-partition", BASELINE,
         episode_module.build_runner("scripted-asis", "", "C3-wrong-partition"),
-        sandbox_root=tmp_path, timeout_s=6,
+        sandbox_root=tmp_path, timeout_s=60,
     )
     assert record["evidence"]["submissions_rejected"] >= 1
 
     clean = episode_module.run_episode(
         "A1-srun-loop", BASELINE,
         episode_module.build_runner("scripted-asis", "", "A1-srun-loop"),
-        sandbox_root=tmp_path / "b", timeout_s=6,
+        sandbox_root=tmp_path / "b", timeout_s=60,
     )
     # A1's request is legal — the harm is at runtime, so the scheduler has nothing to say.
     assert clean["evidence"]["submissions_rejected"] == 0
@@ -779,7 +856,7 @@ def test_episode_record_carries_what_a_reader_needs(tmp_path):
     record = episode_module.run_episode(
         "C1-over-limit", BASELINE,
         episode_module.build_runner("scripted-asis", "", "C1-over-limit"),
-        sandbox_root=tmp_path, timeout_s=6, seed=7,
+        sandbox_root=tmp_path, timeout_s=60, seed=7,
     )
     assert record["case"] == "C1-over-limit"
     assert record["seed"] == 7

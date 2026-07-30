@@ -68,6 +68,27 @@ CONDITION_LABELS = (
 
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
+
+# Skills are delivered as plain markdown in the working directory, not installed into any
+# agent's own skill mechanism.
+#
+# They used to go to `.claude/skills/<name>/SKILL.md`, which is a Claude Code autoload
+# convention. Three things are wrong with that. It measures one harness: Codex — which the
+# Docker/Slurm substrate uses — never reads that path, so the skills arm would silently be
+# skills-none there while still being labelled skills-good. It is not deployable: a centre can
+# publish files, it cannot install into every user's agent configuration. And it makes the two
+# interventions structurally different, when the thing under test is their *content* — the
+# document describes the cluster, the skill describes procedure, and both are markdown a centre
+# hosts.
+SKILLS_DIR = "skills"
+
+# Appended verbatim to every episode's prompt, in all four cells. See materialize().
+SITE_GUIDANCE_POINTER = (
+    "\n\nBefore you start: this site may publish guidance for the cluster you are on — "
+    "conventions, limits, and how it expects jobs to be run. If it does, it is in this "
+    "directory (`INSTRUCTIONS.md`) or under `skills/`. Check, and use whatever you find. "
+    "There may be nothing there.\n"
+)
 GENERATED = BENCHMARK / "generated"
 
 
@@ -120,13 +141,7 @@ def materialize(
                 f"{skills_path} — the skills under test are data, not part of this repo. "
                 f"Point --skills at a checkout of the bundle."
             )
-        # `.claude/skills/<name>/SKILL.md`, not `.claude/skills/SKILL.md`.
-        #
-        # The first version flattened the bundle into `skills/`, which is not a layout the harness
-        # recognises — so the skill would never have loaded and the arm would have run with no
-        # skills while labelled `skills-good`. That is the exact failure the tier check upstream
-        # exists to prevent, reintroduced one directory lower down.
-        destination = work / ".claude" / "skills" / skills_path.name
+        destination = work / SKILLS_DIR / skills_path.name
         destination.mkdir(parents=True, exist_ok=True)
         shutil.copytree(skills_path, destination, dirs_exist_ok=True)
 
@@ -140,6 +155,20 @@ def materialize(
         # Version control and test fixtures are not part of the skill under test.
         for noise in (".git", "tests", ".github"):
             shutil.rmtree(destination / noise, ignore_errors=True)
+
+    # The pointer goes in EVERY arm, including the ones with nothing to find.
+    #
+    # Delivering the skill as a file rather than as an autoloaded skill changes what the
+    # condition means: an autoloaded skill is always in context, a file is read only if the agent
+    # looks. Without a constant pointer the skills-good arm would be measuring "did it think to
+    # look in this directory", which varies by model and by run, rather than "did the skill's
+    # content help" — and the skills-none arm would not even face the question.
+    #
+    # So availability is held constant and only content varies. In three of the four cells the
+    # agent looks and finds nothing, which is exactly what an agent on a centre that publishes
+    # nothing would find.
+    prompt_path = work / "prompt.md"
+    prompt_path.write_text(prompt_path.read_text().rstrip() + SITE_GUIDANCE_POINTER)
 
     assert_nothing_withheld_leaked(work)
     return environment
