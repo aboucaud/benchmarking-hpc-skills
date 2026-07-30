@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tests for the echo-stub Slurm commands.
 
-    uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_stubs.py -q
+    uv run --with pyyaml --with pytest pytest tests/test_stubs.py -q
 
 Folds into the repo's normal `uv run pytest` once the toolchain in PR #2 lands on main; until
 then it stands alone, like src/hpcbench/validate_cases.py.

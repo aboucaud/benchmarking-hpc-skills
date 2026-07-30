@@ -41,7 +41,7 @@ gain a spurious way to pass.
 Tests:
 
 ```bash
-uv run --with pyyaml --with pytest --with pytest-xdist pytest -n auto tests/test_stubs.py -q
+uv run --with pyyaml --with pytest pytest tests/test_stubs.py -q
 ```
 
 ## What each shim does

@@ -12,7 +12,6 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
-  "pytest-xdist>=3.6",   # the suite is subprocess-bound; -n auto roughly halves it
   "ruff>=0.6",
 ]
 
@@ -29,10 +28,15 @@ testpaths = ["tests"]
 # nothing installed. The modules are also runnable as scripts; see the bootstrap at the top of
 # each entry point.
 pythonpath = ["src"]
-# `-n auto` is NOT here on purpose. It needs pytest-xdist, which is an optional dev extra, and
-# an addopts entry naming a plugin that may be absent makes every documented per-file command
-# abort during argument parsing with "unrecognized arguments: -n" and run zero tests. Pass it
-# explicitly when you want the parallel run; the suite is subprocess-bound and roughly halves.
+# Run this suite SERIALLY. `pytest-xdist` was tried and removed: these tests spawn a subprocess
+# per shimmed Slurm call, so parallelising at the pytest level multiplies process count until
+# fork fails — `BlockingIOError: [Errno 35]` on an otherwise idle machine, plus spurious
+# failures in the tests that measure a rate over a wall-clock window. Subprocess-bound is the
+# reason xdist HURTS here, not the reason it helps.
+#
+# ~6 minutes serially, almost all of it deliberate sleeping: A2 has to poll long enough to be a
+# poll storm, and the scripted runners have to be allowed to finish. Interpreter startup is not
+# the cost (33ms).
 addopts = "-q"
 
 [tool.ruff]
