@@ -771,6 +771,9 @@ def main() -> int:
     parser.add_argument("--keep", action="store_true", help="keep sandboxes for inspection")
     parser.add_argument("--include-drafts", action="store_true",
                         help="also run cases marked draft: true, which the review gate excludes")
+    parser.add_argument("--skip-live-preflight", action="store_true",
+                        help="skip the one live call that checks a nested session can "
+                             "authenticate (the free static check still runs)")
     parser.add_argument("--retries", type=int, default=1,
                         help="re-attempt episodes that produced no output at all (infrastructure "
                              "failures only, never a verdict)")
@@ -791,6 +794,27 @@ def main() -> int:
         conditions = [Condition(False, "none")]
     if arguments.matrix and not arguments.skills:
         print("note: --skills not given, so only the skills-none arm runs\n", file=sys.stderr)
+
+    # Refuse to start a run that cannot authenticate, rather than discovering it once per episode.
+    #
+    # The abort-after-three guard already caps the damage, but three episodes is still three
+    # timeouts and a results file, and the message arrives per-episode as though it were about the
+    # agent. This is the same fact stated once, before anything is spent, in the operator's terms.
+    if arguments.runner == "claude-code":
+        probe_runner = build_runner(arguments.runner, arguments.model, "", arguments.max_turns)
+        ok, why = runner_module.ClaudeCodeRunner.credentials_reachable()
+        if not ok:
+            raise SystemExit(f"preflight: {why}")
+        print(f"preflight: {why}", file=sys.stderr)
+        if not arguments.skip_live_preflight:
+            ok, why = probe_runner.preflight(arguments.results / "preflight")
+            if not ok:
+                raise SystemExit(
+                    f"preflight: {why}\n"
+                    f"  Nothing has been spent on episodes. Fix the environment and re-run, or "
+                    f"pass --skip-live-preflight to run anyway."
+                )
+            print(f"preflight: {why}\n", file=sys.stderr)
 
     consecutive_environment_failures = 0
     aborted = ""

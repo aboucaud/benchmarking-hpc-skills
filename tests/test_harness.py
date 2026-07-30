@@ -1051,3 +1051,44 @@ def test_records_survive_a_run_that_never_finishes(tmp_path, monkeypatch):
     records = [json.loads(line) for line in written[0].read_text().splitlines() if line.strip()]
     assert len(records) == 2, f"expected the 2 completed episodes to survive, got {len(records)}"
     assert all(record["case"] for record in records)
+
+
+# ------------------------------------------------------------------------------------------
+# Preflight
+# ------------------------------------------------------------------------------------------
+
+
+def test_missing_credentials_are_reported_before_anything_is_spent(monkeypatch, tmp_path):
+    """The check that would have saved an afternoon.
+
+    A re-login on macOS writes credentials to the Keychain and REMOVES
+    `~/.claude/.credentials.json` — the file `isolated_config` symlinks into every sandbox. Each
+    episode then reported "Not logged in", correctly, in language about the agent rather than
+    about the operator's machine.
+    """
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))  # exists, holds no credentials
+
+    ok, why = runners.ClaudeCodeRunner.credentials_reachable()
+    assert ok is False
+    assert "ANTHROPIC_API_KEY is unset" in why
+    # It must name the fix, not just the symptom.
+    assert "export ANTHROPIC_API_KEY" in why
+
+
+def test_an_api_key_satisfies_the_check(monkeypatch, tmp_path):
+    """The key path is how this actually runs now, and must not be reported as missing."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-a-real-key")
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    ok, why = runners.ClaudeCodeRunner.credentials_reachable()
+    assert ok is True and "ANTHROPIC_API_KEY" in why
+
+
+def test_a_credentials_file_satisfies_the_check(monkeypatch, tmp_path):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_AUTH_TOKEN", raising=False)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path))
+    (tmp_path / ".credentials.json").write_text("{}")
+    ok, _ = runners.ClaudeCodeRunner.credentials_reachable()
+    assert ok is True
