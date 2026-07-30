@@ -165,6 +165,31 @@ for the `good` tier without it is an error rather than a silent fallback: an epi
 `skills-good` that ran without skills would produce a result showing skills do nothing, which is
 the worst failure available here.
 
+### An unresolved mismatch in the skills arm
+
+`HolobiomicsLab/hpc-session` is the obvious first subject, and its guidance lines up with the cases
+almost item for item — *"submit, close, and check back with `queue` later; do not sit in `watch`"*
+(A2), array throttles (A1, A3), filesystem and polling guardrails (family B), and *"do not invent a
+hostname, account or partition — ask"*, which is precisely the failure observed in B3 where the
+agent invented a partition called `compute`.
+
+But the skill drives a **remote** cluster: its whole surface is an `hpc-session` CLI over
+multiplexed SSH with optional TOTP. The sandbox has no such binary and no remote host — the stubs
+are local shims. An agent handed this skill will reach for a command that is not there, and the
+episode then measures how it copes with a missing tool rather than whether the guidance helped.
+
+Three ways out, and the choice belongs to the group rather than to this harness:
+
+1. **Shim `hpc-session` too**, alongside the Slurm commands. Faithful to how the skill is meant to
+   be used, and a substantial amount of new fiction to maintain.
+2. **Split the skill** into guidance and transport, and install only the guidance. Tests what the
+   benchmark actually asks — does the agent behave better when told the rules — but it is no longer
+   testing the skill as shipped.
+3. **Run it as-is and report the flailing.** Honest, and probably measures tool absence rather than
+   cluster literacy.
+
+Worth settling before any skills number is quoted, because all three measure different things.
+
 ## What the agent may see
 
 `job.sh`, `prompt.md`, and the contents of `assets/`, flattened beside the script because the
