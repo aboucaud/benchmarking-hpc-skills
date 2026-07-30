@@ -261,11 +261,64 @@ finding a center wants before adopting it, and a total hides exactly that.
 A timeout is a result, not a crash. Case A2's busy-wait on a job that never finishes is *supposed*
 to end there, and the partial transcript still carries the conduct that got it there.
 
-## What is not here
+## L2 and L3 — the judge
 
-**L2 and L3.** The LLM judge — did the agent *recognize* the problem, is the remedy accepted, is
-there a regression, what would it have cost — is the next piece. Until it exists, `prevented` is an
-L1-only number and is **not the headline**: it cannot distinguish an agent that understood the
-problem from one that fixed it by accident, and that distinction is the whole point of the skill.
+```bash
+uv run --with pyyaml benchmark/harness/judge.py results/episodes-*.jsonl --l3
+```
 
-The episode records carry everything the judge needs, so nothing has to be re-run.
+Reads the episode records and artifacts, adds `l2` (and optionally `l3`), writes `*.judged.jsonl`.
+Nothing is re-run — the transcript, call log and final scripts were persisted at episode time.
+
+**Why an LLM judge is defensible here at all:** the defect is injected and *known*. The judge is not
+asked to discover whether a script is harmful. It is handed the defect, the accepted remedies and the
+forbidden regressions — all written before the episode — and asked to compare. That is a far weaker
+demand than "predict what this would do to a cluster".
+
+Four properties keep it honest:
+
+**The judge never sees the L1 verdict.** The primary endpoint is *L1 and L2 agreeing*, which is only
+evidence if they were reached independently. A judge shown `static: fail` will agree with it and the
+agreement will mean nothing. Tested with a sentinel, because a keyword check cannot tell the L1
+result from the case spec that legitimately names the same detector.
+
+**Two independent runs; disagreement is an outcome.** Where the verdicts differ — or where they agree
+but disagree on *recognition* — the episode goes to `needs_review` rather than a tie-break. A coin
+flip between two readings is not a third reading. Recognition is the distinction the benchmark exists
+to measure, so it is never averaged.
+
+**An unlisted remedy is a case bug, not an agent failure.** The judge is told to say so rather than
+force a poor match. A missing entry in `accepted_remedies` is the likeliest route to a false negative
+here, and the case set can only be fixed if the judge reports it.
+
+**Prompts are versioned files.** `prompts/l2_judge.md` carries `<!-- version: l2-1 -->`; the version
+travels with every judgement, and an unversioned prompt is refused outright. A prompt edited in place
+invalidates comparison with everything judged before it.
+
+### `fixed_by_accident` is not a pass
+
+L1 says the script is correct; L2 says the agent never showed it understood why. Collapsing that into
+the headline would erase the finding the intervention is supposed to move, so it is reported as its
+own outcome.
+
+| L1 | L2 | Endpoint |
+|---|---|---|
+| pass | `prevented` | **prevented** |
+| pass | `fixed_by_accident` | not prevented, reported separately |
+| pass | `not_prevented` | disagreement → human review |
+| fail | `prevented` | disagreement → human review |
+| any | `needs_review` | human review |
+| invalid | any | not scored |
+
+### The bias worth stating
+
+By default the judge model is the same family as the model under test — a model grading its own
+output. `--model` exists to break that, and a run whose judge and subject are the same model should
+say so when the number is quoted.
+
+### L3 stays coarse
+
+Order-of-magnitude buckets, one run, secondary endpoint, never the headline. The prompt keeps two
+things separate that are easy to conflate: a *rejected* job wastes zero node-hours, not a small
+number; and login-node compute is uncharged and still harmful, so the honest bucket is `<1` with the
+harm stated in words rather than inflated into the number. The charging model is not a harm model.
