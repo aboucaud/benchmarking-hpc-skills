@@ -363,6 +363,17 @@ here, and the case set can only be fixed if the judge reports it.
 travels with every judgement, and an unversioned prompt is refused outright. A prompt edited in place
 invalidates comparison with everything judged before it.
 
+### The verdict is steadier than the remedy label
+
+Re-judging the same ten B3 episodes after adding a missing remedy, the verdicts came back stable
+while the `remedy_matched` ids moved: episodes previously called `single-job-both-steps` came back as
+`dependency-chain`, and one as the newly added `submit-from-within-job`.
+
+So **treat the verdict as the measurement and the remedy id as a hint.** A report that quoted a
+distribution over remedy ids would be over-reading — the judge is reliably deciding *whether* the
+change is acceptable and much less reliably deciding *which* listed pattern it most resembles. That
+is the right way round for the endpoint, and worth knowing before anyone tabulates remedies.
+
 ### `fixed_by_accident` is not a pass
 
 L1 says the script is correct; L2 says the agent never showed it understood why. Collapsing that into
