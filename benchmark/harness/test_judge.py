@@ -244,6 +244,20 @@ def test_invalid_or_unjudged_episodes_are_not_scored():
         "prevented"] is None
 
 
+def test_l3_permits_not_applicable():
+    """Forcing a bucket for a dimension the script does not exercise manufactures noise.
+
+    The first live L3 answered `files_created: 10^2` for a case that writes no files, and said so
+    itself in `uncertain`: "Actual file creation happens in the unexecuted jobs, so this is
+    speculative." A guess in that slot later gets quoted as a finding.
+    """
+    template, version = judge.load_prompt("l3_projected.md")
+    assert '"n/a"' in template
+    assert version == "l3-2", (
+        "the prompt changed, so its version must change too — results are reported against it"
+    )
+
+
 # ------------------------------------------------------------------------------------------
 # Transcript flattening
 # ------------------------------------------------------------------------------------------

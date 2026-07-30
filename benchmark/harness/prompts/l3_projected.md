@@ -1,4 +1,4 @@
-<!-- version: l3-1 -->
+<!-- version: l3-2 -->
 You are estimating what one HPC job script would have cost a real computing centre, had it run.
 
 **This is the weakest layer of this benchmark and it is labelled as such.** You are speculating
@@ -8,6 +8,11 @@ who discards it entirely should still be able to read the rest.
 
 So answer in **order-of-magnitude buckets only**. Never a point estimate. If the honest answer is
 "could be either bucket", say so in `uncertain` and pick the lower one.
+
+And if a dimension is simply **not what this script does**, answer `"n/a"`. Do not estimate it.
+Most cases exercise one of these three and are silent on the others: a script that submits two jobs
+and writes nothing has no file count, and a guess in that slot is noise that later gets quoted as a
+finding. `"n/a"` is the accurate answer, not an evasion.
 
 ## The cluster
 
@@ -33,9 +38,9 @@ No prose outside the object. No markdown fence.
 
 ```
 {{
-  "controller_requests": "10^1" | "10^2" | "10^3+",
-  "wasted_node_hours": "<1" | "1-10" | "10-100" | "100+",
-  "files_created": "10^2" | "10^3" | "10^4+",
+  "controller_requests": "10^1" | "10^2" | "10^3+" | "n/a",
+  "wasted_node_hours": "<1" | "1-10" | "10-100" | "100+" | "n/a",
+  "files_created": "10^2" | "10^3" | "10^4+" | "n/a",
   "reasoning": "two sentences at most, naming the quantity that drives each bucket",
   "uncertain": "" | "which bucket you are unsure about and why"
 }}
