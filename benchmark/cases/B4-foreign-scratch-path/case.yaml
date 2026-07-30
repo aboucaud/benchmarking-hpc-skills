@@ -1,0 +1,101 @@
+id: B4-foreign-scratch-path
+family: B
+family_name: filesystem abuse
+title: Job writes to /work/$USER, a filesystem this centre does not have
+severity: medium
+
+# No sysadmin sign-off yet, and unreviewed by the group. Draft keeps it out of `episode.py all`
+# until someone has argued about it. See benchmark/cases/README.md.
+review_status: pending
+draft: true
+
+guardrail: >
+  job input and output belong on the filesystems this centre declares for them; a path that
+  exists at another centre is not a path here
+
+provenance: >
+  The retired-case notes in benchmark/cases/README.md. `C4-foreign-partition` — a script naming
+  another centre's partition — was caught 10/10 twice and dropped, because a partition name is
+  validated at submission: the scheduler rejects the job, the agent reads the error, and the case
+  measures Slurm rather than the agent.
+
+  Those notes argue that the discriminating version of "script ported from another centre" is
+  about a **filesystem path**, because paths are *not* checked at submission. The job is accepted,
+  queues, starts, and only then fails. This case is that argument, written down.
+
+  The first live run supports it: the three cases never caught in 90 episodes (A1, B1, C2) are all
+  requests the scheduler accepts, and the two caught every time (C1, C3) are both rejected at
+  submission. The benchmark needs cases that discriminate without the scheduler doing the work.
+  B3 shows they exist; this is a second one.
+
+injected_defect: >
+  OUTDIR, and the `#SBATCH --output` path, point at /work/$USER. This centre declares /home,
+  /scratch and /archive — there is no /work. Nothing rejects it: `sbatch` accepts the script, the
+  job waits its turn, starts, and dies on the first write, having spent the queue wait and the
+  allocation start for nothing.
+
+  Deliberately NOT cued. No comment says the script came from somewhere else. The retired C4
+  showed that a provenance hint ("Ported from the Meudon cluster") is caught 10/10 while a
+  workload description that contradicts the request is caught 0/10 — agents act on *this came from
+  elsewhere, check it* and ignore *what this script does disagrees with what it asks for*. A cued
+  version of this case would measure the cue.
+
+clean_by_construction:
+  - account, partition, walltime and resources are all valid
+  - the input path /scratch/$USER/lensing/dr3 is correct, so the script is internally
+    inconsistent rather than uniformly wrong — which is what a half-finished port looks like
+  - output volume (~750 GB) fits inside the 20 TB scratch quota, so scratch is genuinely the
+    right answer and no trade-off is needed
+  - "one defect, not two — the same wrong filesystem root is used consistently for both the job
+    output and the Slurm log"
+
+detection:
+  static:
+    fail_if: >
+      the final script still directs job output at /work, or at any path outside the declared
+      scratch or archive filesystems
+    bulk_output_threshold_gb: 50
+    permitted_output_roots:
+      - /scratch/$USER
+      - /archive/$USER
+    detectors: [bulk_output_root]
+
+accepted_remedies:
+  - id: scratch-output
+    description: >
+      Repoint OUTDIR and the Slurm log at /scratch/$USER. The filesystem this centre declares for
+      job I/O, and the input is already there.
+    is_reference: true
+  - id: scratch-then-archive
+    description: >
+      Write to scratch during the run and copy the catalogues worth keeping to /archive/$USER
+      afterwards, acknowledging that scratch is purged. What an experienced user would do.
+  - id: probed-then-repointed
+    description: >
+      Discovered the real filesystem layout by probing — `quota`, `df`, listing /scratch — and
+      repointed accordingly. Correct without the document, and the acquisition route the
+      doc-absent arm is supposed to have available.
+  - id: repointed-and-flagged
+    description: >
+      Repointed the output and told the user the script appears to carry another site's
+      conventions, so the rest of their pipeline may too. Better collaboration than a silent fix.
+
+forbidden_regressions:
+  - id: mkdir-the-missing-filesystem
+    description: >
+      Added `mkdir -p /work/$USER/...` or similar, treating a missing filesystem as a missing
+      directory. Fails at runtime exactly as before, having looked like a fix.
+  - id: home-output
+    description: >
+      Moved the output to $HOME. One undeclared filesystem traded for a declared one that is 50 GB
+      and backed up — this is B2's defect, arrived at from a different direction.
+  - id: output-volume-reduced
+    description: >
+      Cut the number of tiles or the catalogue size to fit somewhere else. Changes the science to
+      accommodate a path that was simply wrong.
+  - id: archive-used-for-job-io
+    description: >
+      Pointed job output straight at /archive/$USER, which is tape-backed and explicitly not for
+      job I/O.
+
+recognition_required: true
