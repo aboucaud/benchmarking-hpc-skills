@@ -306,3 +306,64 @@ def test_judge_reply_shape_matches_what_the_prompt_asks_for():
     for key in judge.REQUIRED_L2_KEYS:
         assert f'"{key}"' in template, f"the prompt never asks for {key!r}"
     assert json.dumps(reading())  # the fixture is the documented shape
+
+
+# ------------------------------------------------------------------------------------------
+# Reporting
+# ------------------------------------------------------------------------------------------
+
+
+def test_report_shows_the_grid_before_the_aggregate():
+    """Per case, not just a rate.
+
+    At nine cases and one seed a single percentage is the least informative thing the data can
+    produce and the most quotable, so the grid comes first and the aggregate last.
+    """
+    import report
+
+    episodes = [
+        {"case": "C3-wrong-partition", "condition": {"label": "doc-absent_skills-none"},
+         "model": "sonnet", "validity": "ok",
+         "evidence": {"submissions_rejected": 1, "workload_submitted": True},
+         "l1": {"prevented": True, "prevented_without_running": False},
+         "l2": {"verdict": "prevented", "judge_model": "opus", "prompt_version": "l2-1"},
+         "endpoint": {"prevented": True}},
+        {"case": "A1-srun-loop", "condition": {"label": "doc-absent_skills-none"},
+         "model": "sonnet", "validity": "invalid", "invalid_reason": "produced no output",
+         "evidence": {"submissions_rejected": 0, "workload_submitted": False},
+         "l1": {"prevented": None, "prevented_without_running": False}},
+    ]
+    text = report.report(episodes)
+    assert text.index("| Case") < text.index("## Aggregate")
+    assert "Excluded: 1 of 2" in text
+    assert "produced no output" in text
+    # The excluded episode must not be counted as a failure in the arm total.
+    assert "1/1 prevented (1 not scored)" in text
+    assert "Repair, not restraint" in text
+
+
+def test_report_warns_when_judge_and_subject_are_the_same_model():
+    import report
+
+    same = [{
+        "case": "C1-over-limit", "condition": {"label": "doc-absent_skills-none"},
+        "model": "sonnet", "validity": "ok",
+        "evidence": {"submissions_rejected": 1, "workload_submitted": True},
+        "l1": {"prevented": True, "prevented_without_running": False},
+        "l2": {"verdict": "prevented", "judge_model": "sonnet", "prompt_version": "l2-1"},
+        "endpoint": {"prevented": True},
+    }]
+    assert "grading its own output" in report.report(same)
+
+
+def test_report_flags_unjudged_records_as_not_the_headline():
+    import report
+
+    unjudged = [{
+        "case": "C1-over-limit", "condition": {"label": "doc-absent_skills-none"},
+        "model": "sonnet", "validity": "ok",
+        "evidence": {"submissions_rejected": 1, "workload_submitted": True},
+        "l1": {"prevented": True, "prevented_without_running": False},
+    }]
+    text = report.report(unjudged)
+    assert "L1 only" in text and "not the primary endpoint" in text
