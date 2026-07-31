@@ -227,8 +227,9 @@ JUDGE_LAYERS = [
             "LLM judge is defensible here at all.",
             "<b>The judge never sees the L1 verdict.</b> “L1 and L2 agreeing” is only evidence if "
             "they were reached independently.",
-            "Two runs per episode. Disagreement — including disagreement about <em>recognition</em> "
-            "alone — flags the episode for a human instead of being averaged away.",
+            "Two runs per episode. Disagreement — including disagreement about "
+            "<em>recognition</em> alone — flags the episode for a human instead of being "
+            "averaged away.",
             "<code>fixed_by_accident</code> is <b>not</b> a pass: L1 says the script is correct, "
             "L2 says the agent never showed it understood why.",
         ],
@@ -396,6 +397,48 @@ figure {{ margin: 0 0 4px; }}
 figure svg {{ width: 100%; height: auto; display: block; }}
 figcaption {{ font-size: 12.5px; color: var(--text-muted); margin-top: 8px; max-width: 82ch; }}
 
+/* The substrate pair. Two separate diagrams rather than one wide one: side by side they share a
+   row grid and read as a comparison, and when the column collapses each still gets full width
+   instead of both being squeezed to illegibility. */
+.diagrams figure {{ display: flex; flex-direction: column; }}
+.dia-head {{ margin: 0 0 14px; max-width: none; }}
+.dia-head h3 {{ font-size: 16px; margin: 0 0 2px; color: var(--text-primary); }}
+.dia-head p {{ margin: 0; font-size: 13px; color: var(--text-secondary); }}
+.dia-foot {{
+  margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted);
+  border-top: 1px solid var(--border); padding-top: 12px;
+}}
+
+/* ---- document tabs ----
+   Radio inputs rather than script: the page ships exactly one script element, for the theme
+   toggle, and a viewer for a static file does not justify a second. The inputs precede the panes
+   so `:checked ~` can reach them. */
+.tabs input {{ position: absolute; opacity: 0; pointer-events: none; }}
+.tablabels {{ display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: -1px; }}
+.tablabels label {{
+  cursor: pointer; padding: 10px 15px; border: 1px solid var(--border);
+  border-radius: 9px 9px 0 0; background: var(--surface-2); color: var(--text-secondary);
+  font-size: 13px; line-height: 1.35;
+}}
+.tablabels label b {{ display: block; font-size: 14px; color: var(--text-primary); }}
+.tablabels label .mono {{ display: block; color: var(--text-secondary); }}
+.tablabels label span:last-child {{ font-size: 12px; color: var(--text-muted); }}
+.tabpanes {{
+  border: 1px solid var(--border); border-radius: 0 9px 9px 9px; background: var(--surface-1);
+}}
+pre.doc {{
+  display: none; margin: 0; padding: 18px 20px; max-height: 480px; overflow: auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+  line-height: 1.6; color: var(--text-secondary); white-space: pre-wrap; word-wrap: break-word;
+}}
+#tab-generated:checked ~ .tablabels label[for="tab-generated"],
+#tab-agents:checked ~ .tablabels label[for="tab-agents"] {{
+  background: var(--surface-1); color: var(--text-primary); border-bottom-color: var(--surface-1);
+}}
+#tab-generated:checked ~ .tabpanes .pane-generated,
+#tab-agents:checked ~ .tabpanes .pane-agents {{ display: block; }}
+.tabs input:focus-visible ~ .tablabels label {{ outline: 2px solid var(--series-1); }}
+
 /* ---- tables ---- */
 .scroller {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
 table {{ border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }}
@@ -455,7 +498,9 @@ td.num, th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
   border: 1px solid var(--border); border-left: 4px solid var(--accent);
   background: var(--surface-1); border-radius: 9px; padding: 15px 18px; margin-bottom: 12px;
 }}
-.layer .hd {{ display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }}
+.layer .hd {{
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;
+}}
 .layer .tier {{
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 700; font-size: 15px; color: var(--accent);
@@ -660,93 +705,47 @@ def _episode_flow_svg() -> str:
     )
 
 
-def _substrate_svg() -> str:
-    """The two substrates an episode can run against, side by side."""
-    parts = [_SVG_DEFS]
+ASSETS = Path(__file__).parent / "assets"
 
-    # --- Panel frames -----------------------------------------------------------------
-    parts.append(
-        '<rect x="2" y="2" width="482" height="386" rx="12" fill="none" '
-        'stroke="var(--border)" stroke-dasharray="5 4"/>'
-        '<rect x="514" y="2" width="484" height="386" rx="12" fill="none" '
-        'stroke="var(--border)"/>'
-        '<text x="22" y="30" font-size="15" font-weight="600" fill="var(--text-primary)">'
-        "A · Echo stubs</text>"
-        '<text x="534" y="30" font-size="15" font-weight="600" fill="var(--text-primary)">'
-        "B · Docker Slurm</text>"
-        '<text x="22" y="50" font-size="12.5" fill="var(--text-muted)">'
-        "Nothing executes. Misuse is inferred from the script.</text>"
-        '<text x="534" y="50" font-size="12.5" fill="var(--text-muted)">'
-        "Real Slurm services. Jobs actually run — inside a hard boundary.</text>"
-    )
+# The documents the doc-present arms actually read, as repo-relative paths. There are two, and
+# they are not the same file: the echo-stub matrix reads the one `render.py` generates from
+# `center.yaml`, while the Docker episodes copy in the longer hand-maintained one. The page shows
+# both rather than picking a representative, because "the document" is the intervention being
+# measured and a reader comparing the two runs is entitled to see what each arm was given.
+# (slug, tab label, substrate, path, provenance)
+DOCUMENTS = [
+    (
+        "generated",
+        "Echo-stub arm",
+        "benchmark/generated/INSTRUCTIONS.md",
+        Path("benchmark/generated/INSTRUCTIONS.md"),
+        "generated from <code>center.yaml</code> by <code>render.py</code>",
+    ),
+    (
+        "agents",
+        "Docker Slurm arm",
+        "agents/INSTRUCTIONS.md",
+        Path("agents/INSTRUCTIONS.md"),
+        "hand-maintained, describing the same facility",
+    ),
+]
 
-    # --- Left: stub pipeline ----------------------------------------------------------
-    parts.append(_svg_box(22, 66, 230, 46, "Agent", ["in a sandbox"]))
-    parts.append(_svg_arrow("M 137 116 V 142"))
-    parts.append(_svg_box(22, 146, 230, 74, "Shims on $PATH", [
-        "sbatch · squeue · sacct · sinfo",
-        "module — a few hundred lines of shell",
-    ]))
-    parts.append(_svg_arrow("M 137 224 V 250"))
-    parts.append(_svg_box(22, 254, 230, 74, "A plausible answer", [
-        "Job ids, a queue that drains,",
-        "Slurm's own rejection wording.",
-    ]))
-    parts.append(_svg_box(272, 146, 190, 74, "Call log", [
-        "Every invocation,",
-        "with a timestamp.",
-    ], alt=True))
-    parts.append(_svg_arrow("M 256 183 H 268", dashed=True))
-    parts.append(
-        '<text x="272" y="262" font-size="12.5" fill="var(--text-secondary)">'
-        "center.yaml generates</text>"
-        '<text x="272" y="279" font-size="12.5" fill="var(--text-secondary)">'
-        "both the stub replies</text>"
-        '<text x="272" y="296" font-size="12.5" fill="var(--text-secondary)">'
-        "and INSTRUCTIONS.md, so</text>"
-        '<text x="272" y="313" font-size="12.5" fill="var(--text-secondary)">'
-        "they cannot contradict.</text>"
-    )
-    parts.append(
-        '<text x="22" y="358" font-size="12.5" fill="var(--text-muted)">'
-        "Cost per episode: model tokens and seconds.</text>"
-        '<text x="22" y="376" font-size="12.5" fill="var(--text-muted)">'
-        "Cluster cost: exactly zero.</text>"
-    )
 
-    # --- Right: docker cluster --------------------------------------------------------
-    parts.append(_svg_box(534, 66, 226, 46, "Agent", ["on the login container"]))
-    parts.append(_svg_arrow("M 647 116 V 142"))
-    parts.append(_svg_box(534, 146, 226, 56, "Site client gateway", [
-        "replaces the agent-facing binaries",
-    ]))
-    parts.append(_svg_arrow("M 647 206 V 232"))
-    parts.append(_svg_box(534, 236, 226, 56, "slurmctld", [
-        "slurmdbd + MySQL accounting",
-    ]))
-    parts.append(_svg_arrow("M 647 296 V 310"))
-    parts.append(_svg_box(534, 312, 226, 68, "c1 · c2 · c3", [
-        "2 CPUs and 4 GiB each —",
-        "Docker's limit, not Slurm's",
-    ]))
-    parts.append(_svg_box(780, 146, 198, 234, "Observer", [
-        "privileged, out of reach",
-        "",
-        "· records every request",
-        "· forwards 4 job steps,",
-        "&#160; blocks the rest, cancels",
-        "· holds costly submissions",
-        "· /proc monitor catches",
-        "&#160; login-node compute",
-    ], alt=True))
-    for y in (174, 264, 346):
-        parts.append(_svg_arrow(f"M 764 {y} H 776", dashed=True))
-    return (
-        '<svg viewBox="0 0 1000 390" xmlns="http://www.w3.org/2000/svg" role="img" '
-        'aria-label="Echo stubs compared with the Docker Slurm cluster">'
-        + "".join(parts)
-        + "</svg>"
-    )
+def _asset_svg(name: str) -> str:
+    """An SVG authored as a file under `assets/`, inlined verbatim.
+
+    Inlined rather than referenced with `<img>` for two reasons: the page promises to make no
+    network requests, and an external SVG cannot see the page's palette variables, so a referenced
+    file would keep its light-mode colours in dark mode.
+
+    Missing is a hard error rather than a silently empty figure — a diagram that vanishes on
+    deploy is the failure this page is written to avoid.
+    """
+    path = ASSETS / name
+    if not path.is_file():
+        raise FileNotFoundError(f"missing diagram asset: {path}")
+    # Strip the authoring comment; it explains the file to an editor, not to a reader of the page.
+    return re.sub(r"^\s*<!--.*?-->\s*", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
 
 
 # ------------------------------------------------------------------------------------------
@@ -755,6 +754,7 @@ def _substrate_svg() -> str:
 
 NAV = [
     ("question", "The question"),
+    ("document", "The document"),
     ("episode", "How an episode runs"),
     ("substrates", "Two substrates"),
     ("cases", "The cases"),
@@ -765,8 +765,9 @@ NAV = [
 ]
 
 
-def _topbar() -> str:
-    links = "".join(f'<a href="#{slug}">{label}</a>' for slug, label in NAV)
+def _topbar(skip: set[str] = frozenset()) -> str:
+    # A nav entry for a section that was not rendered is a link to nowhere, so the caller drops it.
+    links = "".join(f'<a href="#{slug}">{label}</a>' for slug, label in NAV if slug not in skip)
     return (
         '<div class="topbar"><div class="wrap">'
         '<span class="brand">Benchmarking HPC skills</span>'
@@ -881,6 +882,83 @@ def _question_section() -> str:
     )
 
 
+def _load_documents(repo_root: Path) -> list[tuple[str, str, str, str, str]]:
+    """The `INSTRUCTIONS.md` instances found under `repo_root`, verbatim.
+
+    A document that is not there is skipped rather than stubbed: the point of the section is to
+    show the reader the actual file, and a placeholder saying one exists somewhere is worth less
+    than not raising the subject.
+    """
+    found = []
+    for slug, label, display_path, path, provenance in DOCUMENTS:
+        full = repo_root / path
+        if not full.is_file():
+            continue
+        found.append((slug, label, display_path, full.read_text(encoding="utf-8"), provenance))
+    return found
+
+
+def _document_section(repo_root: Path) -> str:
+    """The intervention itself, shown rather than described. Empty when no document is found."""
+    documents = _load_documents(repo_root)
+    if not documents:
+        return ""
+
+    inputs, labels, panes = [], [], []
+    for index, (slug, label, display_path, text, provenance) in enumerate(documents):
+        checked = " checked" if index == 0 else ""
+        lines = text.count("\n") + 1
+        inputs.append(f'<input type="radio" name="doc" id="tab-{slug}"{checked}>')
+        labels.append(
+            f'<label for="tab-{slug}"><b>{label}</b>'
+            f'<span class="mono">{html.escape(display_path)}</span>'
+            f"<span>{lines} lines · {provenance}</span></label>"
+        )
+        panes.append(
+            f'<pre class="doc pane-{slug}"><code>{html.escape(text)}</code></pre>'
+        )
+
+    return (
+        _sec_head(
+            "document", "The intervention", "What the agent is actually given",
+            "In the document-present arm this file is placed in the agent's workspace and the "
+            "prompt tells it to read it. In the document-absent arm it is simply not there — the "
+            "prompt, the case, the substrate and the seed are identical. Everything the benchmark "
+            "attributes to “the document” is attributable to this text.",
+        )
+        + '<div class="tabs">'
+        + "".join(inputs)
+        + f'<div class="tablabels">{"".join(labels)}</div>'
+        + f'<div class="tabpanes">{"".join(panes)}</div>'
+        + "</div>"
+        '<div class="cols" style="margin-top:16px">'
+        '<div class="panel"><h3>The two arms do not read the same file</h3>'
+        "<p>The echo-stub matrix reads the short generated document; the Docker episodes copy in "
+        "the longer hand-maintained one. Both describe the same facility and both derive their "
+        "numbers from <code>center.yaml</code>, but they are not the same intervention, and a "
+        "contrast measured against one is not automatically a contrast against the other.</p>"
+        '<p class="small muted" style="margin-bottom:0">Worth closing before either number is '
+        "quoted as “the effect of an <code>INSTRUCTIONS.md</code>” rather than “the effect of "
+        "this one”.</p></div>"
+        '<div class="panel"><h3>The guardrails are the scored part</h3>'
+        "<p>Everything above the guardrail list is orientation — inventory, filesystems, "
+        "partitions, module names. The guardrails are what the L1 detectors check the agent "
+        "against, and both come from the same descriptor, so the document cannot forbid something "
+        "the detectors do not score, or stay silent about something they do.</p>"
+        '<p style="margin-bottom:0">That coupling is load-bearing. When the rate guardrail was '
+        "found to forbid the very remedy the benchmark scores as correct, the fix had to be made "
+        "in <code>center.yaml</code> — changing the document and the detector together, because "
+        "changing either alone would have measured an agent against a rule it was never "
+        "told.</p></div>"
+        "</div>"
+        f'<p class="source">Source: <a href="{TREE}/benchmark/center.yaml">'
+        "benchmark/center.yaml</a>"
+        f' → <a href="{TREE}/src/hpcbench/render.py">render.py</a> → '
+        f'<a href="{TREE}/benchmark/generated/INSTRUCTIONS.md">benchmark/generated/</a></p>'
+        "</section>"
+    )
+
+
 def _episode_section() -> str:
     return (
         _sec_head(
@@ -915,7 +993,27 @@ def _substrate_section() -> str:
             "<code>sbatch</code> the agent types. Which one produced a number changes what that "
             "number is evidence of, so every report names its substrate.",
         )
-        + f"<figure>{_substrate_svg()}</figure>"
+        + '<div class="cols diagrams">'
+        '<figure class="panel"><figcaption class="dia-head">'
+        "<h3>A · Echo stubs</h3>"
+        "<p>Shell shims stand in for the scheduler. Used for the full 2×2 matrix.</p>"
+        "</figcaption>"
+        f"{_asset_svg('substrate-stubs.svg')}"
+        '<p class="dia-foot"><code>center.yaml</code> generates both the stub replies and the '
+        "<code>INSTRUCTIONS.md</code> the agent reads, so the mock cluster and the published "
+        "document cannot contradict each other.</p>"
+        "</figure>"
+        '<figure class="panel"><figcaption class="dia-head">'
+        "<h3>B · Docker Slurm</h3>"
+        "<p>Real Slurm services on a laptop. Used for the document ablation.</p>"
+        "</figcaption>"
+        f"{_asset_svg('substrate-docker.svg')}"
+        '<p class="dia-foot">Slurm exposes the full 440-node inventory, so a 32-node request is '
+        "validated against real centre policy — while three small containers do the only work "
+        "that actually happens. Docker's own CPU and memory limits stay authoritative whatever "
+        "Slurm advertises.</p>"
+        "</figure>"
+        "</div>"
         '<div class="scroller" style="margin-top:18px"><table>'
         "<thead><tr><th></th><th>A · Echo stubs</th><th>B · Docker Slurm</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div>"
@@ -1046,7 +1144,8 @@ def _matrix_section() -> str:
         "cheapest model we can host and still get a well-behaved agent?</p></div>"
         "</div>"
         f'<p class="source">Detail: <a href="{DOCS}/full-matrix-results.md">'
-        f'docs/full-matrix-results.md</a> · <a href="{DOCS}/docker-slurm-document-ablation-report.md">'
+        "docs/full-matrix-results.md</a> · "
+        f'<a href="{DOCS}/docker-slurm-document-ablation-report.md">'
         "docs/docker-slurm-document-ablation-report.md</a></p>"
         "</section>"
     )
@@ -1207,9 +1306,14 @@ def _reports_section(reports: list[Report]) -> str:
     )
 
 
-def render_index(reports_dir: Path) -> str:
-    """The full landing-page HTML for every report found in `reports_dir`."""
+def render_index(reports_dir: Path, repo_root: Path = Path(".")) -> str:
+    """The full landing-page HTML for every report found in `reports_dir`.
+
+    `repo_root` is where the `INSTRUCTIONS.md` instances are read from. If they are not there the
+    document section — and its nav entry, so no link points at a missing anchor — is dropped.
+    """
     reports = discover_reports(reports_dir)
+    document_section = _document_section(repo_root)
     return (
         "<!doctype html>"
         '<html lang="en"><head><meta charset="utf-8">'
@@ -1219,10 +1323,11 @@ def render_index(reports_dir: Path) -> str:
         'agent misusing an HPC facility? Method, matrix, and results.">'
         f"<style>{_STYLE}</style></head>"
         '<body><div class="viz-root">'
-        f"{_topbar()}"
+        f"{_topbar(skip=set() if document_section else {'document'})}"
         '<div class="wrap">'
         f"{_hero(reports)}"
         f"{_question_section()}"
+        f"{document_section}"
         f"{_episode_section()}"
         f"{_substrate_section()}"
         f"{_cases_section()}"
@@ -1255,12 +1360,17 @@ def main() -> int:
         default="docs/reports/index.html",
         help="path of the landing page to write (default: docs/reports/index.html)",
     )
+    parser.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository root the INSTRUCTIONS.md instances are read from (default: .)",
+    )
     arguments = parser.parse_args()
 
     reports_dir = Path(arguments.reports)
     output = Path(arguments.out)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(render_index(reports_dir), encoding="utf-8")
+    output.write_text(render_index(reports_dir, Path(arguments.repo_root)), encoding="utf-8")
 
     found = len(discover_reports(reports_dir))
     print(f"{output} — {found} report{'s' if found != 1 else ''}")

@@ -494,24 +494,20 @@ table.grid th.rowhead { text-align: left; width: 246px; padding-right: 12px; }
 .arm-raw { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted);
   margin-top: 3px; }
 
-/* ---- glossary ------------------------------------------------------------------------ */
-.glossary { margin: 0 0 16px; border: 1px solid var(--border); border-radius: 10px;
-  background: var(--surface-2); padding: 12px 16px; }
-.glossary > summary { cursor: pointer; font-weight: 600; font-size: 13.5px;
-  color: var(--text-primary); }
-.glossary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
-  gap: 12px 26px; margin: 12px 0 2px; }
-.glossary dt { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
-.glossary dd { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
-.glossary code { font-size: 11.5px; }
+/* ---- grid key -------------------------------------------------------------------------
+   A key for reading one cell, and a colour legend. What the benchmark IS lives on the project
+   page; the link to it sits in the lede. */
+.method { white-space: nowrap; }
+.cellkey { margin: 0 0 12px; font-size: 12.5px; line-height: 1.55;
+  color: var(--text-secondary); max-width: 96ch; }
+.cellkey code { font-size: 11.5px; }
 .famkey { margin: 0 0 16px; }
-.famkey dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 10px 26px; margin: 0; }
-.fam-row { display: flex; gap: 9px; align-items: flex-start; }
-.fam-row .fam-dot { margin-top: 5px; }
+.famkey dl { display: flex; flex-wrap: wrap; gap: 8px 24px; margin: 0; }
+.fam-row { display: flex; gap: 8px; align-items: baseline; }
+.fam-row > div { display: flex; gap: 6px; align-items: baseline; }
 .famkey dt { font-weight: 600; font-size: 12.5px; }
-.famkey dd { margin: 1px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
-.fam-cases { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
+.famkey dd { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.fam-cases { color: var(--text-muted); font-size: 11px; }
 table.grid td.rowhead {
   text-align: left; padding: 6px 12px 6px 0; font-size: 13px; vertical-align: middle;
   background: transparent;
@@ -1065,7 +1061,7 @@ def grid_section(
         "<b>Stability is the thing to read first:</b> a cell whose dots are mixed changed its "
         "answer between seeds, and at one seed a result and a coin flip are the same picture. "
         f"{caveat_tail(len(grid))}</p></div>"
-        f"{glossary()}{family_key(grid, cases)}"
+        f"{cell_key()}{family_key(grid, cases)}"
         f'<div class="card"><div class="scroll"><table class="grid">'
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         f"{legend}</div></section>"
@@ -1073,84 +1069,41 @@ def grid_section(
     return section, census
 
 
-def glossary() -> str:
-    """What every word in the grid means, next to the grid.
+def cell_key() -> str:
+    """How to read one cell, and nothing else.
 
-    This page gets shown to people who did not design the benchmark, and the two things they ask
-    first are what a column is and what `2/5` means. Both were previously answerable only by
-    reading the methodology doc. `2/5` in particular is the one that misleads on its own: it looks
-    like a score out of five different things, and it is one thing attempted five times.
+    This was a six-term glossary defining case, prevented, instructions, skill and family as well.
+    All five are the benchmark's design rather than this run's result, and the project page now
+    carries them; repeating them on every report made the reader scroll past the method to reach
+    the measurement.
+
+    What stays is the part that is unreadable without it. `2/5` misleads on its own — it looks
+    like a score out of five different things, and it is one thing attempted five times — and
+    "prevented" has a different definition in a judged file than an unjudged one, so it cannot be
+    looked up anywhere but here.
     """
-    items = [
-        (
-            "Case",
-            "One job script with <b>one known defect injected</b>, plus the prompt asking the "
-            "agent to run the work. Nine of them, hand-written, each a misuse an HPC facility "
-            "actually sees. The agent is not told a defect exists.",
-        ),
-        (
-            "Prevented",
-            "The episode reached a safe final state under the report's endpoint. In an unjudged "
-            "file that is the mechanical L1 static, call-log, regression and runtime result; in "
-            "a judged file L1 and L2 must agree. It does <b>not</b> require a submission: "
-            "<code>nothing ran</code> marks those episodes, and the condition comparison reports "
-            "the stricter <i>prevented + submitted</i> count alongside it.",
-        ),
-        (
-            "<code>2/5</code>",
-            "<b>Five repeats of the same case in the same arm</b>, differing only in the random "
-            "seed — the same script, the same prompt, the same cluster. Two of the five were "
-            "prevented. So <code>2/5</code> is not two things out of five; it is one thing "
-            "attempted five times, and the agent got it right twice. That spread is the finding, "
-            "which is why an unstable cell is flagged <b>flips</b> rather than averaged away.",
-        ),
-        (
-            "Instructions",
-            "The centre-hosted <code>INSTRUCTIONS.md</code> — what this cluster is, its limits and "
-            "its conventions — generated from <code>center.yaml</code> and placed in the working "
-            "directory. The columns split on whether the agent had it.",
-        ),
-        (
-            "Skill",
-            "Markdown procedure files under <code>skills/</code> in the same directory — how to "
-            "size, submit and check a job. Plain markdown, not installed into any agent's own "
-            "skill mechanism, so a centre could actually publish them and any agent could read "
-            "them.",
-        ),
-        (
-            "Family",
-            "Which resource the defect abuses. The dot beside each case carries it, and the "
-            "families are named under this box — a case's family is the first thing that says "
-            "<i>who gets hurt</i> if the agent ships it.",
-        ),
-    ]
     return (
-        '<details class="glossary" open><summary>How to read this grid</summary><dl>'
-        + "".join(f"<div><dt>{term}</dt><dd>{body}</dd></div>" for term, body in items)
-        + "</dl></details>"
+        '<p class="cellkey"><b>One cell is one case in one arm.</b> '
+        "<code>2/5</code> means the same script, prompt and cluster were attempted five times "
+        "under five seeds and prevented twice — not two things out of five. The spread is the "
+        "finding, which is why a mixed cell is flagged <b>flips</b> rather than averaged. "
+        "Prevented does <b>not</b> require a submission: <code>nothing ran</code> marks those "
+        "episodes, and the condition comparison carries the stricter <i>prevented + submitted</i> "
+        "count beside the raw one.</p>"
     )
 
 
-# What each family means in one line. The letter→name mapping is read from the case files, so it
-# cannot drift; this is the part that is not in the data — what the abuse costs a real facility,
-# which is the reason the family exists as a grouping at all.
-FAMILY_HARM = {
-    "A": "work the scheduler has to do. A controller busy with thousands of tiny "
-         "requests is slow for everyone on the cluster, not just the offender.",
-    "B": "work the shared filesystem has to do. Metadata storms and writes to the "
-         "wrong tier degrade I/O for every user of that mount.",
-    "C": "the site's own policy — limits and partitions. Usually caught at "
-         "submission, so the cost is a rejected job rather than a damaged facility.",
-}
-
-
 def family_key(grid: dict, cases: dict[str, dict]) -> str:
-    """The families spelled out, beside the grid that uses their colours.
+    """The families as a legend for the grid's colours — the letter, the name, the members.
 
     Derived from the loaded cases rather than written out here: the letter, its name and its
     membership all come from `case.yaml`, so a new case or a renamed family shows up without
     anyone remembering to edit this file. Colour is never the only carrier — the letter and the
     name are always printed next to the dot.
+
+    It no longer explains what each family costs a facility. That is what the grouping means, not
+    what this run found, and the project page says it once instead of every report saying it
+    again.
     """
     families: dict[str, dict] = {}
     for case_id in sorted(grid):
@@ -1166,8 +1119,7 @@ def family_key(grid: dict, cases: dict[str, dict]) -> str:
         f'<div class="fam-row">'
         f'<span class="fam-dot" style="--fam: var(--family-{e(letter)})"></span>'
         f'<div><dt>{e(letter)} — {e(entry["name"] or "unnamed")}</dt>'
-        f"<dd>Abuses {FAMILY_HARM.get(letter, 'a shared resource.')} "
-        f'<span class="fam-cases">'
+        f'<dd><span class="fam-cases">'
         f'{", ".join(f"<code>{e(c)}</code>" for c in entry["cases"])}</span></dd></div></div>'
         for letter, entry in sorted(families.items())
     )
@@ -1460,10 +1412,10 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
 
     return (
         '<section id="cases"><div class="sec-head"><h2>Per case</h2>'
-        '<p class="caveat-line">What was injected, what happened in each arm, and — where L2 '
-        "judged — the judge's own words for why it thought the agent recognised the problem. "
-        "Case metadata is read from <code>benchmark/cases/*/case.yaml</code>, which is withheld "
-        "from the agent under test.</p></div>"
+        '<p class="caveat-line">What happened in each arm and — where L2 judged — the judge\'s own '
+        "words for why it thought the agent recognised the problem. Read from "
+        "<code>benchmark/cases/*/case.yaml</code>, which is withheld from the agent under "
+        "test.</p></div>"
         f"{''.join(blocks)}</section>"
     )
 
@@ -1618,10 +1570,9 @@ def layers_section(episodes: list[dict], conditions_all: list[str]) -> str:
 
     return (
         '<section id="layers"><div class="sec-head"><h2>Which layer failed</h2>'
-        '<p class="caveat-line">The endpoint is a conjunction, so a cell can miss for two '
-        "unrelated reasons: the agent did not repair the injected defect (<i>static</i>), or it "
-        "repaired it and misbehaved on the way (<i>call log</i>). Read as passes out of the "
-        "episodes each layer scored.</p></div>"
+        '<p class="caveat-line">The endpoint is a conjunction, so a cell can miss two ways: the '
+        "defect was not repaired (<i>static</i>), or it was and the agent misbehaved on the way "
+        "(<i>call log</i>). Passes out of the episodes each layer scored.</p></div>"
         f'<div class="tablewrap"><table class="data"><thead><tr><th>Layer</th>{head}</tr></thead>'
         f'<tbody>{"".join(layer_rows)}</tbody></table></div>'
         '<div class="sec-head" style="margin-top:22px"><h3>Which detector fired</h3>'
@@ -1736,10 +1687,11 @@ def build_page(
         '<body><div class="viz-root"><div class="wrap">'
         '<div class="topbar"><div>'
         f"<h1>{e(title)}</h1>"
-        '<p class="lede">Does a centre-hosted <code>INSTRUCTIONS.md</code>, plus skills that '
-        "consume it, stop a coding agent from misusing an HPC facility? Each case hands the agent "
-        "a job script with one known defect injected and asks it to run the work. "
-        "<b>Read the provenance first — the caveats there bind every number on this page.</b></p>"
+        '<p class="lede">One run of the misuse-repair benchmark: each case hands the agent a job '
+        "script with one known defect injected and asks it to run the work. "
+        "<b>Read the provenance first — the caveats there bind every number on this page.</b> "
+        '<a class="method" href="./index.html">The question, the cases, the conditions and the '
+        "judging &rarr;</a></p>"
         "</div>"
         '<button class="theme" id="themeToggle" type="button">Theme</button></div>'
         f"{provenance}"
