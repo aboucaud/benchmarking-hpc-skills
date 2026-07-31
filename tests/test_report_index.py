@@ -77,6 +77,25 @@ def test_report_without_provenance_is_still_listed(tmp_path):
     assert reports[0].chips == []
 
 
+def test_episode_total_sums_every_report(tmp_path):
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B", provenance={"Episodes": "90"})
+
+    assert report_index._episode_total(report_index.discover_reports(tmp_path)) == 198
+
+
+def test_episode_total_is_withheld_when_a_report_cannot_be_read(tmp_path):
+    # A partial sum reads as a complete one, and contradicts the cards below it. Better to show
+    # no total than a total that quietly omits a run.
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B")
+
+    reports = report_index.discover_reports(tmp_path)
+
+    assert report_index._episode_total(reports) is None
+    assert "episodes published" not in report_index.render_index(tmp_path)
+
+
 def test_index_excludes_itself(tmp_path):
     _write_report(tmp_path, "real.html", "A real report")
     (tmp_path / "index.html").write_text("<title>stale index</title>", encoding="utf-8")

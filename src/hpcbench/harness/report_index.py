@@ -776,7 +776,31 @@ def _topbar() -> str:
     )
 
 
-def _hero(report_count: int) -> str:
+def _episode_total(reports: list[Report]) -> int | None:
+    """Episodes across every listed report, or `None` if any of them cannot be read.
+
+    A hard-coded total goes stale the moment a report is added, and then contradicts the cards a
+    reader can add up for themselves. This sums the same best-effort chip the cards show — and
+    returns `None` rather than a partial sum, because a total that silently omits a report is
+    worse than no total at all.
+    """
+    total = 0
+    for report in reports:
+        value = dict(report.chips).get("Episodes", "").replace(",", "").strip()
+        if not value.isdigit():
+            return None
+        total += int(value)
+    return total or None
+
+
+def _hero(reports: list[Report]) -> str:
+    report_count = len(reports)
+    total = _episode_total(reports)
+    episodes_stat = (
+        f'<div class="stat"><b>{total}</b><span>episodes published</span></div>'
+        if total
+        else ""
+    )
     reports_stat = (
         f'<div class="stat"><b>{report_count}</b><span>rendered report'
         f'{"s" if report_count != 1 else ""}</span></div>'
@@ -799,7 +823,7 @@ def _hero(report_count: int) -> str:
         '<div class="stat"><b>2×2</b><span>document × skills</span></div>'
         '<div class="stat"><b>2</b><span>substrates</span></div>'
         '<div class="stat"><b>3</b><span>judging layers</span></div>'
-        '<div class="stat"><b>198</b><span>episodes run</span></div>'
+        f"{episodes_stat}"
         f"{reports_stat}"
         "</div>"
         "</header>"
@@ -1197,7 +1221,7 @@ def render_index(reports_dir: Path) -> str:
         '<body><div class="viz-root">'
         f"{_topbar()}"
         '<div class="wrap">'
-        f"{_hero(len(reports))}"
+        f"{_hero(reports)}"
         f"{_question_section()}"
         f"{_episode_section()}"
         f"{_substrate_section()}"
