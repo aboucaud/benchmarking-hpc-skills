@@ -77,6 +77,25 @@ def test_report_without_provenance_is_still_listed(tmp_path):
     assert reports[0].chips == []
 
 
+def test_episode_total_sums_every_report(tmp_path):
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B", provenance={"Episodes": "90"})
+
+    assert report_index._episode_total(report_index.discover_reports(tmp_path)) == 198
+
+
+def test_episode_total_is_withheld_when_a_report_cannot_be_read(tmp_path):
+    # A partial sum reads as a complete one, and contradicts the cards below it. Better to show
+    # no total than a total that quietly omits a run.
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B")
+
+    reports = report_index.discover_reports(tmp_path)
+
+    assert report_index._episode_total(reports) is None
+    assert "episodes published" not in report_index.render_index(tmp_path)
+
+
 def test_index_excludes_itself(tmp_path):
     _write_report(tmp_path, "real.html", "A real report")
     (tmp_path / "index.html").write_text("<title>stale index</title>", encoding="utf-8")
@@ -138,13 +157,21 @@ def test_no_external_resource_references(tmp_path):
     _write_report(tmp_path, "run.html", "Run")
 
     page = report_index.render_index(tmp_path)
+    # `xmlns="http://www.w3.org/2000/svg"` is an XML namespace name, never fetched. Drop it before
+    # checking, so the check below stays a literal "no plaintext URLs" rule.
+    page_without_namespaces = page.replace('xmlns="http://www.w3.org/2000/svg"', "")
 
     assert "<script src" not in page
     assert "<link " not in page
     assert "@import" not in page
-    assert "http://" not in page
-    # The only absolute URL allowed is the source-repo link in the footer.
-    assert page.count("https://") == page.count(report_index.REPO_URL)
+    assert "http://" not in page_without_namespaces
+    # Every absolute URL is an outbound link to a declared destination — never a fetched
+    # resource. An undeclared host is how a self-contained page starts depending on a CDN.
+    for url in re.findall(r'href="(https://[^"]+)"', page):
+        assert url.startswith(report_index.EXTERNAL_LINK_PREFIXES), f"undeclared link: {url}"
+    # Nothing outside an href may carry a URL either, except the repo URL shown as link text.
+    remainder = re.sub(r'href="https://[^"]+"', "", page).replace(report_index.REPO_URL, "")
+    assert "https://" not in remainder
 
 
 def test_write_command_creates_output(tmp_path):
