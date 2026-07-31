@@ -805,6 +805,35 @@ def provenance_section(
             f"<div>{text}</div></div>"
         )
 
+    # A record may declare itself unfit to leave the project. The Docker-Slurm substrate (PR #22)
+    # stamps `publishable_evidence: false` on every episode until an administrator has reviewed
+    # what the observer captured — and this page is, by construction, the artefact that gets sent
+    # to another group. Rendering such a record silently is the one failure here that is not a
+    # measurement error but a disclosure: the flag exists precisely to stop what this file does.
+    #
+    # It is surfaced rather than filtered. Dropping the episodes would leave a page that looks
+    # complete and is not, which is the same class of lie in the other direction. The reader is
+    # told, at the top, in the strongest band on the page.
+    withheld = sorted(
+        {
+            str(episode.get("substrate") or episode.get("runner") or "unknown")
+            for episode in episodes
+            if episode.get("publishable_evidence") is False
+        }
+    )
+    if withheld:
+        n = sum(1 for episode in episodes if episode.get("publishable_evidence") is False)
+        add(
+            "critical",
+            "do not circulate",
+            f"<b>{n} episode{'s' if n != 1 else ''} on this page are marked "
+            f"<code>publishable_evidence: false</code> by the runner that produced them "
+            f"({', '.join(f'<code>{e(s)}</code>' for s in withheld)}).</b> "
+            f"That flag means an administrator has not yet reviewed what was captured. "
+            f"This file is the thing we send to other groups — so until those episodes are "
+            f"cleared, <b>this page is internal</b>. Regenerate it without them, or get the "
+            f"review, before it leaves the project.",
+        )
     if unsigned:
         add(
             "critical",

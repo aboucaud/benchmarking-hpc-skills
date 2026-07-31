@@ -355,3 +355,27 @@ def test_every_family_on_the_grid_is_named_and_explained(tmp_path, unstable_run)
         letter = case_id[:1]
         assert f"<dt>{letter} —" in key, f"family {letter} is on the grid with no key entry"
     assert "Abuses" in key
+
+
+def test_unpublishable_evidence_is_announced_not_silently_rendered(tmp_path):
+    """A record can declare itself unfit to leave the project, and this page is the thing that
+    leaves the project. Rendering it quietly is a disclosure, not a measurement error.
+
+    Surfaced rather than dropped: silently omitting the episodes leaves a page that looks
+    complete and is not, which is the same lie pointing the other way.
+    """
+    records = [
+        episode("A1-srun-loop", "doc-absent_skills-none", s, prevented=False) for s in range(3)
+    ]
+    records[0]["publishable_evidence"] = False
+    records[0]["substrate"] = "docker-slurm"
+    page = render(tmp_path, records)
+    assert "do not circulate" in page
+    assert "publishable_evidence" in page
+    assert "docker-slurm" in page, "the reader is not told which runner withheld it"
+    assert "1/3" in page or "0/3" in page, "the episode was dropped instead of flagged"
+
+
+def test_a_clean_run_carries_no_disclosure_banner(tmp_path, unstable_run):
+    """The banner has to stay rare, or it stops being read."""
+    assert "do not circulate" not in render(tmp_path, unstable_run)
