@@ -504,6 +504,14 @@ table.grid th.rowhead { text-align: left; width: 246px; padding-right: 12px; }
 .glossary dt { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
 .glossary dd { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
 .glossary code { font-size: 11.5px; }
+.famkey { margin: 0 0 16px; }
+.famkey dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px 26px; margin: 0; }
+.fam-row { display: flex; gap: 9px; align-items: flex-start; }
+.fam-row .fam-dot { margin-top: 5px; }
+.famkey dt { font-weight: 600; font-size: 12.5px; }
+.famkey dd { margin: 1px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.fam-cases { display: block; color: var(--text-muted); font-size: 11px; margin-top: 2px; }
 table.grid td.rowhead {
   text-align: left; padding: 6px 12px 6px 0; font-size: 13px; vertical-align: middle;
   background: transparent;
@@ -866,7 +874,7 @@ def provenance_section(
             "warning",
             "incomplete",
             f"<b>{len(missing)} of the four conditions were not run in this file:</b> "
-            f'{", ".join(f"<code>{e(m)}</code>" for m in missing)}. '
+            f'{", ".join(f"{e(condition_line(m))} (<code>{e(m)}</code>)" for m in missing)}. '
             f"The 2×2 is not complete, so no statement about the interaction of the document and "
             f"the skills is available.",
         )
@@ -1024,7 +1032,7 @@ def grid_section(
         "<b>Stability is the thing to read first:</b> a cell whose dots are mixed changed its "
         "answer between seeds, and at one seed a result and a coin flip are the same picture. "
         f"{caveat_tail(len(grid))}</p></div>"
-        f"{glossary()}"
+        f"{glossary()}{family_key(grid, cases)}"
         f'<div class="card"><div class="scroll"><table class="grid">'
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         f"{legend}</div></section>"
@@ -1075,10 +1083,10 @@ def glossary() -> str:
             "them.",
         ),
         (
-            "Families",
-            "<b>A</b> — load on the scheduler (submit storms, polling). "
-            "<b>B</b> — abuse of the shared filesystem (many tiny files, writing to home). "
-            "<b>C</b> — asking for what the policy forbids (over a limit, the wrong partition).",
+            "Family",
+            "Which resource the defect abuses. The dot beside each case carries it, and the "
+            "families are named under this box — a case's family is the first thing that says "
+            "<i>who gets hurt</i> if the agent ships it.",
         ),
     ]
     return (
@@ -1086,6 +1094,49 @@ def glossary() -> str:
         + "".join(f"<div><dt>{term}</dt><dd>{body}</dd></div>" for term, body in items)
         + "</dl></details>"
     )
+
+
+# What each family means in one line. The letter→name mapping is read from the case files, so it
+# cannot drift; this is the part that is not in the data — what the abuse costs a real facility,
+# which is the reason the family exists as a grouping at all.
+FAMILY_HARM = {
+    "A": "work the scheduler has to do. A controller busy with thousands of tiny "
+         "requests is slow for everyone on the cluster, not just the offender.",
+    "B": "work the shared filesystem has to do. Metadata storms and writes to the "
+         "wrong tier degrade I/O for every user of that mount.",
+    "C": "the site's own policy — limits and partitions. Usually caught at "
+         "submission, so the cost is a rejected job rather than a damaged facility.",
+}
+
+
+def family_key(grid: dict, cases: dict[str, dict]) -> str:
+    """The families spelled out, beside the grid that uses their colours.
+
+    Derived from the loaded cases rather than written out here: the letter, its name and its
+    membership all come from `case.yaml`, so a new case or a renamed family shows up without
+    anyone remembering to edit this file. Colour is never the only carrier — the letter and the
+    name are always printed next to the dot.
+    """
+    families: dict[str, dict] = {}
+    for case_id in sorted(grid):
+        meta = cases.get(case_id, {})
+        letter = str(meta.get("family") or case_id[:1])
+        entry = families.setdefault(letter, {"name": "", "cases": []})
+        entry["cases"].append(case_id)
+        if meta.get("family_name"):
+            entry["name"] = str(meta["family_name"])
+    if not families:
+        return ""
+    rows = "".join(
+        f'<div class="fam-row">'
+        f'<span class="fam-dot" style="--fam: var(--family-{e(letter)})"></span>'
+        f'<div><dt>{e(letter)} — {e(entry["name"] or "unnamed")}</dt>'
+        f"<dd>Abuses {FAMILY_HARM.get(letter, 'a shared resource.')} "
+        f'<span class="fam-cases">'
+        f'{", ".join(f"<code>{e(c)}</code>" for c in entry["cases"])}</span></dd></div></div>'
+        for letter, entry in sorted(families.items())
+    )
+    return f'<div class="famkey"><dl>{rows}</dl></div>'
 
 
 def census_section(census: dict, judged: bool) -> str:
@@ -1184,7 +1235,8 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
             + (f" · {unscored} not scored" if unscored else ""),
             "headline": f"{caught}/{scored} prevented ({rate * 100:.0f}%)",
             "rows": [["95% Wilson interval", f"{low * 100:.0f}% – {high * 100:.0f}%"]],
-            "foot": "Interval assumes independent episodes; they are not — five seeds per case.",
+            "foot": "Interval assumes independent episodes. They are not: the seeds within a "
+                    "case share a script and a prompt, so this is wider than it looks.",
         }
         rows.append(
             f'<div class="bar-row" tabindex="0" data-tip={json_attr(tip)}>'

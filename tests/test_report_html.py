@@ -341,5 +341,17 @@ def test_the_grid_says_what_a_denominator_is(tmp_path, unstable_run):
     glossary = page.split("How to read this grid", 1)[1][:4000]
     assert "seed" in glossary.lower()
     assert "same case" in glossary.lower()
-    for term in ("Case", "Prevented", "Instructions", "Skill", "Families"):
+    for term in ("Case", "Prevented", "Instructions", "Skill", "Family"):
         assert f"<dt>{term}" in glossary, f"{term} missing from the grid glossary"
+
+
+def test_every_family_on_the_grid_is_named_and_explained(tmp_path, unstable_run):
+    """Family is a colour on every row. A colour with no key is decoration, so each letter that
+    appears has to arrive with its name, what it abuses, and which cases are in it — and the key
+    is built from the case files, so a new family cannot appear without one."""
+    page = render(tmp_path, unstable_run)
+    key = page.split('class="famkey"', 1)[1].split("</div></div>", 1)[0]
+    for case_id in {episode["case"] for episode in unstable_run}:
+        letter = case_id[:1]
+        assert f"<dt>{letter} —" in key, f"family {letter} is on the grid with no key entry"
+    assert "Abuses" in key
