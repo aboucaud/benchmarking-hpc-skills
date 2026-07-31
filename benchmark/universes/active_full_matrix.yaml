@@ -1,0 +1,23 @@
+id: active_full_matrix
+description: |
+  ACTIVE universe. MySTRA selects the first file in `universes/` when sorted and
+  takes the universe id from the FILE STEM, so the name is load-bearing: this one
+  sorts ahead of the others and is therefore the universe every MySTRA page renders.
+  Renaming it silently repoints the whole site.
+
+  The universe the published results were produced under: the full 2x2 matrix
+  (document absent/present x skills none/good) at three seeds, on the echo-stub
+  substrate, subject and judge both Sonnet.
+
+  The document and skills selections below name the FOCAL arm — the one the prose
+  speaks from. The `case_grid` table spans all four arms, because the contrast between
+  them is the result and a universe can only pin one. See the
+  `treatment_arms_versus_decisions` finding.
+
+decisions:
+  document: present
+  skills: none
+  substrate: echo_stubs
+  runner: claude_code
+  replication: three
+  judge_model: same_family

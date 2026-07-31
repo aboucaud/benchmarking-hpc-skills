@@ -1,0 +1,26 @@
+version: 1
+project:
+  id: hpc-misuse-repair-benchmark
+  title: Does a center's INSTRUCTIONS.md change how an agent treats a shared cluster?
+  description: >-
+    A misuse-repair benchmark, rendered from its own ASTRA spec. Every measured value on
+    these pages is interpolated from the episode records at build time; none is typed in.
+  keywords:
+    - hpc
+    - slurm
+    - agent benchmark
+    - astra
+  # MySTRA ships as a single bundled .mjs release asset — nothing to npm install. Pinned
+  # rather than tracking `latest`, because the plugin is pre-1.0 and its vocabulary may
+  # change without notice between releases.
+  plugins:
+    - https://github.com/LightconeResearch/MySTRA/releases/download/v0.0.7/mystra.mjs
+  toc:
+    - file: index.md
+    - file: pages/audit-matrix.md
+    - file: pages/a3-no-array.md
+    - file: pages/b3-login-node-compute.md
+    - file: pages/c1-over-limit.md
+site:
+  template: book-theme
+  title: HPC misuse-repair benchmark

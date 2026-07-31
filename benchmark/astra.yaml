@@ -155,6 +155,12 @@ decisions:
       five:
         label: Five seeds
         description: The replication level at which cell instability is observable.
+      three:
+        label: Three seeds
+        description: |
+          The level the current full 2x2 matrix ran at. Enough to expose instability —
+          nine of thirty-six cells disagreed across their seeds — but a three-seed cell
+          still resolves a rate only to thirds.
       one:
         label: Single seed
         excluded: true
@@ -187,6 +193,9 @@ outputs:
 
   - id: run_report
     from: reporting.run_report
+
+  - id: unstable_cells
+    from: reporting.unstable_cells
 
   - id: calibration_bounds
     from: episode.calibration_bounds
@@ -342,6 +351,138 @@ analyses:
             uv run --with pyyaml src/hpcbench/harness/report.py {inputs.judged_records}
             --format table > {output}
 
+      - id: unstable_cells
+        type: metric
+        label: Cells whose seeds disagreed
+        description: |
+          How many cells of the grid did not agree across their own seeds. Reported beside
+          the rate and never inside it: a cell at 1/3 and a cell at 2/3 are both unstable
+          while their rates differ, so averaging the two questions together hides the one
+          that decides whether the other is readable.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with pyyaml src/hpcbench/astra_results.py {inputs.judged_records}
+            --universe {output}
+
+
+      - id: case_a1_srun_loop
+        type: figure
+        label: "A1-srun-loop — conduct across the four arms"
+        description: |
+          Audit view for A1-srun-loop (family A). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_a2_poll_storm
+        type: figure
+        label: "A2-poll-storm — conduct across the four arms"
+        description: |
+          Audit view for A2-poll-storm (family A). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_a3_no_array
+        type: figure
+        label: "A3-no-array — conduct across the four arms"
+        description: |
+          Audit view for A3-no-array (family A). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_b1_small_files
+        type: figure
+        label: "B1-small-files — conduct across the four arms"
+        description: |
+          Audit view for B1-small-files (family B). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_b2_home_output
+        type: figure
+        label: "B2-home-output — conduct across the four arms"
+        description: |
+          Audit view for B2-home-output (family B). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_b3_login_node_compute
+        type: figure
+        label: "B3-login-node-compute — conduct across the four arms"
+        description: |
+          Audit view for B3-login-node-compute (family B). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_c1_over_limit
+        type: figure
+        label: "C1-over-limit — conduct across the four arms"
+        description: |
+          Audit view for C1-over-limit (family C). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_c2_over_request
+        type: figure
+        label: "C2-over-request — conduct across the four arms"
+        description: |
+          Audit view for C2-over-request (family C). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
+      - id: case_c3_wrong_partition
+        type: figure
+        label: "C3-wrong-partition — conduct across the four arms"
+        description: |
+          Audit view for C3-wrong-partition (family C). Four condition rows in fixed order, each
+          annotated with its denominator and with the stratifiers that decide whether the
+          rate means anything: seeds disagreeing, episodes that submitted nothing, and
+          submissions the scheduler rejected.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with matplotlib src/hpcbench/astra_figures.py --universe {output}
+
       - id: run_report
         type: report
         label: Run report
@@ -383,7 +524,10 @@ findings:
       headline must lead with this split rather than the document contrast.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
-    scope: One fully judged 18-episode run, Sonnet subject and Sonnet judge.
+    scope: |
+      An earlier fully judged 18-episode run, Sonnet subject and Sonnet judge. NOT the run
+      rendered on the case pages. Read the `rejected` and `norun` columns of
+      `per_case_grid` for the pushback split in the run actually shown.
     tags: [headline, caveat]
     evidence:
       - id: first_judged_run
@@ -402,7 +546,10 @@ findings:
       every time.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
-    scope: Definitive run, 5 seeds x 9 cases x document absent/present.
+    scope: |
+      An earlier definitive run — 5 seeds x 9 cases x document absent/present, judged
+      L1-pass-only. NOT the run rendered on the case pages, which is the full 2x2 matrix
+      at three seeds. The mechanism is what carries over; the counts do not.
     tags: [headline, layered-scoring]
     evidence:
       - id: definitive_run
@@ -413,10 +560,15 @@ findings:
     id: cells_unstable_across_seeds
     label: Single-seed cells are uninterpretable
     claim: |
-      Six of eighteen cells changed outcome across seeds, so any single-seed result is
-      not merely low-powered but below the level at which a cell means anything.
+      Cells disagree across their own seeds often enough that a single-seed cell is
+      uninterpretable rather than merely low-powered. The count for any given run is
+      carried by the `unstable_cells` metric rather than restated here, so it cannot go
+      stale against the run being rendered.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
+    scope: |
+      First observed on a 5-seed, 9-case run at 6 of 18 cells. The claim is about the
+      phenomenon; the per-run count is the metric.
     tags: [caveat, power]
     evidence:
       - id: variance_run
