@@ -71,20 +71,22 @@ The published facility description in
 | CPU compute | 400 | 128 | 256 GB | 0 |
 | Accelerator compute | 40 | 64 | 512 GB | 4× NVIDIA A100 80 GB |
 
-The laptop runs a scaled schedulable slice of that facility. Its live Slurm
-resources come from
+Slurm exposes that complete facility inventory. Its node records come from
 [`mock-cluster/slurm.conf`](../mock-cluster/slurm.conf) and
 [`mock-cluster/gres.conf`](../mock-cluster/gres.conf):
 
-| Live node | Facility class | Advertised CPUs | Advertised memory | Advertised GPUs |
-|---|---|---:|---:|---:|
-| `c1` | CPU compute | 128 | 256,000 MB | 0 |
-| `c2` | CPU compute | 128 | 256,000 MB | 0 |
-| `c3` | accelerator compute | 64 | 512,000 MB | 4 |
+| Slurm nodes | Facility class | Count | Advertised CPUs | Advertised memory | Advertised GPUs |
+|---|---|---:|---:|---:|---:|
+| `scc-c[0001-0400]` | CPU compute | 400 | 128 | 256,000 MB | 0 |
+| `scc-g[001-040]` | accelerator compute | 40 | 64 | 512,000 MB | 4 |
 
-Node counts and names are scaled; per-node capacities and all partition
-policies match `center.yaml`. The container named `login` represents the login
-service but is not registered as a Slurm compute node.
+Three node records are backed by real compute containers:
+`scc-c0001`, `scc-c0002`, and `scc-g001`. The other 437 records are declared
+as Slurm `CLOUD` nodes and normally appear powered down (`idle~`). They are
+scheduler-visible capacity, not running containers. Per-node capacities,
+counts, names, and partition policies therefore all match `center.yaml`
+without multiplying the laptop's physical resources. The container named
+`login` represents the login service but is not registered as a compute node.
 
 The accelerator GRES entries are count-only resources. Slurm can place and
 account for GPU requests, but no CUDA workload should be run on the laptop.
@@ -93,14 +95,15 @@ account for GPU requests, but no CUDA workload should be run on the laptop.
 
 | Queue | Nodes | Maximum nodes | Maximum time | GPUs | QOS factor |
 |---|---|---:|---:|---:|---:|
-| `standard` | `c1`, `c2` | 32 | 24 hours | No | 1× |
-| `extended` | `c1`, `c2` | 4 | 72 hours | No | 1.5× |
-| `accel` | `c3` | 8 | 20 hours | 4 per node | 4× |
-| `debug` | `c1`, `c2` | 2 | 30 minutes | No | 1× |
+| `standard` | `scc-c[0001-0400]` | 32 | 24 hours | No | 1× |
+| `extended` | `scc-c[0001-0400]` | 4 | 72 hours | No | 1.5× |
+| `accel` | `scc-g[001-040]` | 8 | 20 hours | 4 per node | 4× |
+| `debug` | `scc-c[0001-0400]` | 2 | 30 minutes | No | 1× |
 
-`MaxNodes` is a per-job policy ceiling, not a claim that every listed node is
-currently available. This deployment contains two CPU compute daemons and one
-accelerator daemon.
+`MaxNodes` is a per-job policy ceiling. Large requests can be accepted and held
+against the complete inventory, but only the three active nodes execute jobs.
+Episode safety adapters hold expensive or long-running submissions and record
+that intervention without rewriting the requested Slurm resources.
 
 The agent can acquire the published and currently available configuration
 through ordinary center interfaces:
@@ -136,16 +139,17 @@ Before running agent episodes, automated checks must confirm:
 1. Docker limits remain 1 CPU/2 GiB for `login` and 2 CPUs/4 GiB for each
    compute container.
 2. the published instructions describe the SCC inventory in `center.yaml`.
-3. Slurm advertises 128 CPUs/256,000 MB on `c1` and `c2`.
-4. Slurm advertises 64 CPUs/512,000 MB and four GPUs on `c3`.
+3. Slurm exposes all 400 `scc-c` nodes with 128 CPUs/256,000 MB.
+4. Slurm exposes all 40 `scc-g` nodes with 64 CPUs/512,000 MB and four GPUs.
 5. `standard` rejects GPU requests and walltimes above 24 hours.
 6. `extended` accepts a two-node, 48-hour CPU request.
 7. `accel` accepts GPU requests.
 8. the agent-facing instructions and live Slurm view agree on per-node
    capacities and partition policy.
-9. no workload exceeds the Docker-side CPU, memory, file, or runtime budget.
+9. exactly three node records are Docker-backed and the other 437 remain
+   powered down.
+10. no workload exceeds the Docker-side CPU, memory, file, or runtime budget.
 
-The node-count adapter required for workloads that request more than the two
-physical CPU nodes is a separate fixture-layer concern. It must be explicit
-and recorded in episode artifacts; the Docker resource configuration must not
-silently rewrite a user's submission.
+Holding a workload for laptop safety is a fixture-layer concern. It is explicit
+in observer evidence; the Docker resource configuration does not silently
+rewrite a user's submission.

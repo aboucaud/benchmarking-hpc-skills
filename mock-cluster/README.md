@@ -10,16 +10,21 @@ The cluster contains:
 - one `slurmdbd` accounting daemon;
 - one internal `slurmctld` controller;
 - one login node that provides SSH access and a pinned Codex CLI;
-- two CPU compute nodes, `c1` and `c2`;
-- one fake-accelerator node, `c3`, with scheduler-only GPU GRES;
+- two CPU daemon containers, `c1` and `c2`, registered as `scc-c0001` and
+  `scc-c0002`;
+- one accelerator daemon container, `c3`, registered as `scc-g001` with
+  scheduler-only GPU GRES;
+- the complete SCC scheduler inventory: 400 CPU-node records and 40
+  accelerator-node records, of which the other 437 records are powered-down
+  cloud capacity and do not create containers;
 - shared `/home`, `/scratch`, `/archive`, `/episode/work`, and `/data` volumes;
   and
-- benchmark partitions generated from `benchmark/center.yaml`.
+- partitions matched to `benchmark/center.yaml`.
 
 The login node is limited to one CPU and 2 GB of memory. Each compute node
-is limited by Docker to two CPUs and 4 GB. Slurm advertises the larger synthetic
-resource counts expected by the benchmark; the workloads are functional
-stand-ins, not performance tests. The login node does not run `slurmd`.
+is limited by Docker to two CPUs and 4 GB. Slurm advertises the full synthetic
+facility and its larger per-node capacities, while bounded workload fixtures
+keep local runs inexpensive. The login node does not run `slurmd`.
 
 ## Requirements
 
@@ -42,8 +47,9 @@ docker compose up -d --build --wait --wait-timeout 180
 ./smoke-test.sh
 ```
 
-The smoke test waits for all three compute nodes, submits CPU and synthetic-GPU
-jobs, and verifies the CPU job's accounting record.
+The smoke test waits for all three Docker-backed compute nodes, validates the
+full scheduler inventory, submits CPU and synthetic-GPU jobs, and verifies the
+CPU job's accounting record.
 
 To start without rebuilding:
 
@@ -167,14 +173,19 @@ The renderer does not rewrite the Docker files. If the center descriptor
 changes, update the mock-cluster snapshots deliberately and use `drift` to
 verify their scheduler invariants.
 
-The generated partitions are:
+The configured partitions are:
 
 | Partition | Default | Nodes | Maximum time |
 | --- | --- | --- | --- |
-| `standard` | yes | `c1`, `c2` | 24 hours |
-| `extended` | no | `c1`, `c2` | 72 hours |
-| `accel` | no | `c3` | 20 hours |
-| `debug` | no | `c1`, `c2` | 30 minutes |
+| `standard` | yes | `scc-c[0001-0400]` | 24 hours |
+| `extended` | no | `scc-c[0001-0400]` | 72 hours |
+| `accel` | no | `scc-g[001-040]` | 20 hours |
+| `debug` | no | `scc-c[0001-0400]` | 30 minutes |
+
+Only `scc-c0001`, `scc-c0002`, and `scc-g001` have live `slurmd` containers.
+The remaining nodes appear in Slurm with the cloud/powered-down suffix `~`.
+This allows scripts to be checked against the real node counts and partition
+limits without starting 440 compute containers.
 
 After changing a Slurm configuration file, rebuild from clean cluster state:
 

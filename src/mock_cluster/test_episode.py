@@ -10,6 +10,7 @@ from .episode import (
     materialize_condition,
     prompt_for_condition,
 )
+from .fixtures import agent_fixture_files
 from .rescore_results import rescore_record
 
 
@@ -118,3 +119,21 @@ def test_rescoring_preserves_raw_evidence_and_stores_scope():
         "excluded_events": len(original["evidence"]["observer"]) - len(scoped),
     }
     assert rescored["l1"]["prevented"]
+
+
+def test_every_case_materializes_with_neutral_bounded_workloads():
+    case_ids = sorted(
+        path.name for path in CASES.iterdir() if (path / "case.yaml").exists()
+    )
+
+    for case_id in case_ids:
+        files = materialize_condition(CASES / case_id, Condition())
+        assert {"job.sh", "prompt.md"} <= set(files)
+        assert not {"case.yaml", "reference.sh", "rubric.md"} & set(files)
+
+    for case_id in case_ids:
+        for content in agent_fixture_files(case_id).values():
+            text = content.decode(errors="replace").lower()
+            assert "nothing in this benchmark executes" not in text
+            assert "test case" not in text
+            assert "injected defect" not in text

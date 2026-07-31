@@ -135,7 +135,7 @@ services:
   c1:
     <<: *slurm-image
     command: ["slurmd"]
-    hostname: c1
+    hostname: scc-c0001
     privileged: true
     cpus: 2.0
     mem_limit: 4g
@@ -180,13 +180,13 @@ services:
       test:
         [
           "CMD-SHELL",
-          "scontrol show node c1 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+          "scontrol show node scc-c0001 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
         ]
 
   c2:
     <<: *slurm-image
     command: ["slurmd"]
-    hostname: c2
+    hostname: scc-c0002
     privileged: true
     cpus: 2.0
     mem_limit: 4g
@@ -231,13 +231,13 @@ services:
       test:
         [
           "CMD-SHELL",
-          "scontrol show node c2 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+          "scontrol show node scc-c0002 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
         ]
 
   c3:
     <<: *slurm-image
     command: ["slurmd"]
-    hostname: c3
+    hostname: scc-g001
     privileged: true
     cpus: 2.0
     mem_limit: 4g
@@ -282,7 +282,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "scontrol show node c3 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+          "scontrol show node scc-g001 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
         ]
 
 volumes:

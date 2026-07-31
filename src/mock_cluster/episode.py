@@ -11,6 +11,7 @@ from typing import Any
 
 import yaml
 
+from .fixtures import agent_fixture_files
 from .runner import CodexExecRunner, RunResult
 from .score import score_episode
 from .substrate import DockerSlurmSubstrate
@@ -75,6 +76,7 @@ def materialize_condition(
         for path in sorted(assets.iterdir()):
             if path.is_file():
                 files[path.name] = path.read_bytes()
+    files.update(agent_fixture_files(case_dir.name))
     if condition.doc:
         files["agents/INSTRUCTIONS.md"] = (AGENTS / "INSTRUCTIONS.md").read_bytes()
     if condition.skills != "none":
@@ -184,6 +186,7 @@ class DockerEpisode:
         accounting: list[dict] = []
         controller_log = ""
         gateway_events: list[dict] = []
+        process_events: list[dict] = []
         security: dict[str, Any] = {}
         try:
             substrate.start()
@@ -215,6 +218,7 @@ class DockerEpisode:
             )
             time.sleep(1)
             final_files = substrate.collect_workspace()
+            process_events = substrate.login_process_events(episode_id)
             # Retain the complete fresh-cluster record for audit. Scoring
             # below selects the harness episode label so infrastructure
             # healthchecks cannot count as agent behavior.
@@ -239,6 +243,7 @@ class DockerEpisode:
             files=final_files,
             events=scored_events,
             commands=run_result.commands,
+            processes=process_events,
         )
         acted = bool(run_result.transcript or run_result.commands)
         validity = "ok" if acted and not run_result.timed_out else (
@@ -288,6 +293,7 @@ class DockerEpisode:
                 },
                 "workload_submitted": l1["workload_submitted"],
                 "gateway": gateway_events,
+                "login_processes": process_events,
                 "accounting": accounting,
                 "controller_log": controller_log,
                 "security_preflight": security,

@@ -15,18 +15,21 @@ deadline=$((SECONDS + 120))
 while (( SECONDS < deadline )); do
     ready_nodes="$(
         "${compose[@]}" exec -T login \
-            sinfo --noheader --Node --format='%N' 2>/dev/null \
+            sinfo --noheader --Node --format='%N|%T' 2>/dev/null \
+            | awk -F'|' '$2 == "idle" || $2 == "allocated" || $2 == "mixed" {
+                print $1
+            }' \
             | sort -u \
             | paste -sd, - \
             || true
     )"
-    if [ "${ready_nodes}" = "c1,c2,c3" ]; then
+    if [ "${ready_nodes}" = "scc-c0001,scc-c0002,scc-g001" ]; then
         break
     fi
     sleep 2
 done
 
-if [ "${ready_nodes:-}" != "c1,c2,c3" ]; then
+if [ "${ready_nodes:-}" != "scc-c0001,scc-c0002,scc-g001" ]; then
     echo "The compute nodes did not register within 120 seconds." >&2
     "${compose[@]}" ps
     exit 1
@@ -99,8 +102,8 @@ echo "Submitting a two-node smoke-test job ..."
     state="$(sacct --noheader --allocations --jobs="${job_id}" --format=State \
         | awk "NF { print \$1; exit }")"
     test "${state}" = "COMPLETED"
-    grep -Fxq c1 "smoke-${job_id}.out"
-    grep -Fxq c2 "smoke-${job_id}.out"
+    grep -Fxq scc-c0001 "smoke-${job_id}.out"
+    grep -Fxq scc-c0002 "smoke-${job_id}.out"
 
     printf "Job %s completed on both compute nodes:\\n" "${job_id}"
     sort "smoke-${job_id}.out"
@@ -121,8 +124,8 @@ echo "Submitting a fake-GPU smoke-test job ..."
             --output="gpu-smoke-%j.out" \
             --wrap="hostname"
     )"
-    test "$(tr -d "[:space:]" < "gpu-smoke-${job_id}.out")" = "c3"
-    printf "Job %s completed on the synthetic accelerator node.\\n" "${job_id}"
+    test "$(tr -d "[:space:]" < "gpu-smoke-${job_id}.out")" = "scc-g001"
+    printf "Job %s completed on the accelerator scheduling node.\\n" "${job_id}"
 '
 
 echo "Mock Slurm cluster is ready."
