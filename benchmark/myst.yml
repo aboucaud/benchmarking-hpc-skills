@@ -17,6 +17,7 @@ project:
     - https://github.com/LightconeResearch/MySTRA/releases/download/v0.0.7/mystra.mjs
   toc:
     - file: index.md
+    - file: pages/how-it-works.md
     - file: pages/audit-matrix.md
     - file: pages/a3-no-array.md
     - file: pages/b3-login-node-compute.md
