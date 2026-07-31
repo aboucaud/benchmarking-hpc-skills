@@ -227,8 +227,9 @@ JUDGE_LAYERS = [
             "LLM judge is defensible here at all.",
             "<b>The judge never sees the L1 verdict.</b> “L1 and L2 agreeing” is only evidence if "
             "they were reached independently.",
-            "Two runs per episode. Disagreement — including disagreement about <em>recognition</em> "
-            "alone — flags the episode for a human instead of being averaged away.",
+            "Two runs per episode. Disagreement — including disagreement about "
+            "<em>recognition</em> alone — flags the episode for a human instead of being "
+            "averaged away.",
             "<code>fixed_by_accident</code> is <b>not</b> a pass: L1 says the script is correct, "
             "L2 says the agent never showed it understood why.",
         ],
@@ -455,7 +456,9 @@ td.num, th.num {{ text-align: right; font-variant-numeric: tabular-nums; }}
   border: 1px solid var(--border); border-left: 4px solid var(--accent);
   background: var(--surface-1); border-radius: 9px; padding: 15px 18px; margin-bottom: 12px;
 }}
-.layer .hd {{ display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }}
+.layer .hd {{
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px;
+}}
 .layer .tier {{
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-weight: 700; font-size: 15px; color: var(--accent);
@@ -1046,7 +1049,8 @@ def _matrix_section() -> str:
         "cheapest model we can host and still get a well-behaved agent?</p></div>"
         "</div>"
         f'<p class="source">Detail: <a href="{DOCS}/full-matrix-results.md">'
-        f'docs/full-matrix-results.md</a> · <a href="{DOCS}/docker-slurm-document-ablation-report.md">'
+        "docs/full-matrix-results.md</a> · "
+        f'<a href="{DOCS}/docker-slurm-document-ablation-report.md">'
         "docs/docker-slurm-document-ablation-report.md</a></p>"
         "</section>"
     )
