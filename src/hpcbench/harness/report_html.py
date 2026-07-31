@@ -83,6 +83,46 @@ from hpcbench.harness.report import (  # noqa: E402
 from hpcbench.paths import CASES  # noqa: E402
 
 # ------------------------------------------------------------------------------------------
+# Arm names, for a reader who was not in the room
+# ------------------------------------------------------------------------------------------
+#
+# The record labels (`doc-present_skills-good`) are internal shorthand and read as jargon on a
+# slide. Two things about them mislead an outside reader specifically:
+#
+#   `doc-present` / `doc-absent` — "doc" is the centre-hosted `INSTRUCTIONS.md`. Absent/present
+#   sounds like a property of the run; it is the intervention being tested, so it is named for
+#   what it is: with or without the site's instructions.
+#
+#   `skills-good` — `skills` is a bundle *tier* name, and the design leaves room for a tier that
+#   is deliberately poor (does a bad skill hurt?). No such arm has ever been run: every episode
+#   to date is `none` or `good`, so on this page the axis is binary and "good" is a quality claim
+#   with nothing to contrast against. Shown as with/without the skill. The tier machinery stays
+#   in the harness — when a second tier is actually run, this mapping is where it surfaces.
+#
+# Display only. The record label is what the tooltip, the per-case detail and the table view
+# carry, so anything on this page can still be traced back to a row in the JSONL.
+CONDITION_DISPLAY = {
+    "doc-absent_skills-none": ("no instructions", "no skill"),
+    "doc-absent_skills-good": ("no instructions", "+ skill"),
+    "doc-present_skills-none": ("instructions", "no skill"),
+    "doc-present_skills-good": ("instructions", "+ skill"),
+}
+
+
+def condition_name(label: str) -> tuple[str, str]:
+    """(document arm, skill arm) for display. Unknown labels fall back to the raw shorthand."""
+    if label in CONDITION_DISPLAY:
+        return CONDITION_DISPLAY[label]
+    doc, _, skills = label.partition("_")
+    return (doc.replace("doc-", ""), skills.replace("skills-", ""))
+
+
+def condition_line(label: str) -> str:
+    """The arm on one line, for places too narrow for a stacked column head."""
+    doc, skill = condition_name(label)
+    return f"{doc} {skill}" if skill.startswith("+") else f"{doc}, {skill}"
+
+# ------------------------------------------------------------------------------------------
 # Palette — every value from the dataviz skill's reference instance (references/palette.md).
 # Nothing here is eyeballed; the validator runs recorded in the module docstring of the tests.
 # ------------------------------------------------------------------------------------------
@@ -447,6 +487,23 @@ table.grid { border-collapse: separate; border-spacing: 2px; width: 100%; min-wi
 table.grid th { font-weight: 600; font-size: 12.5px; color: var(--text-secondary);
   text-align: center; padding: 0 4px 6px; vertical-align: bottom; }
 table.grid th.rowhead { text-align: left; width: 246px; padding-right: 12px; }
+/* Column head: the intervention in words, the record label underneath so the column can still
+   be traced back to a row in the JSONL. */
+.arm-doc { display: block; font-size: 13px; color: var(--text-primary); }
+.arm-skill { display: block; font-weight: 500; }
+.arm-raw { display: block; font-size: 10px; font-weight: 400; color: var(--text-muted);
+  margin-top: 3px; }
+
+/* ---- glossary ------------------------------------------------------------------------ */
+.glossary { margin: 0 0 16px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-2); padding: 12px 16px; }
+.glossary > summary { cursor: pointer; font-weight: 600; font-size: 13.5px;
+  color: var(--text-primary); }
+.glossary dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+  gap: 12px 26px; margin: 12px 0 2px; }
+.glossary dt { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.glossary dd { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--text-secondary); }
+.glossary code { font-size: 11.5px; }
 table.grid td.rowhead {
   text-align: left; padding: 6px 12px 6px 0; font-size: 13px; vertical-align: middle;
   background: transparent;
@@ -843,7 +900,9 @@ def grid_section(
     census = {"stable_zero": 0, "stable_all": 0, "flips": 0, "not_run": 0, "single_seed": 0}
 
     head = '<th class="rowhead">Case</th>' + "".join(
-        f"<th>{e(label.replace('_', '<br>'))}</th>".replace("&lt;br&gt;", "<br>")
+        f'<th><span class="arm-doc">{e(condition_name(label)[0])}</span>'
+        f'<span class="arm-skill">{e(condition_name(label)[1])}</span>'
+        f'<code class="arm-raw">{e(label)}</code></th>'
         for label in conditions
     )
     rows = []
@@ -869,7 +928,7 @@ def grid_section(
                     + json_attr(
                         {
                             "case": case_id,
-                            "condition": label,
+                            "condition": f"{condition_line(label)}  ({label})",
                             "headline": "not run",
                             "rows": [],
                             "foot": "This cell has no episodes in the loaded file.",
@@ -913,7 +972,7 @@ def grid_section(
             ]
             tip = {
                 "case": case_id,
-                "condition": label,
+                "condition": f"{condition_line(label)}  ({label})",
                 "headline": f"{passed}/{scored} prevented",
                 "rows": [
                     ["stability", "flips across seeds" if stats["unstable"] else "consistent"],
@@ -965,11 +1024,68 @@ def grid_section(
         "<b>Stability is the thing to read first:</b> a cell whose dots are mixed changed its "
         "answer between seeds, and at one seed a result and a coin flip are the same picture. "
         f"{caveat_tail(len(grid))}</p></div>"
+        f"{glossary()}"
         f'<div class="card"><div class="scroll"><table class="grid">'
         f"<thead><tr>{head}</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
         f"{legend}</div></section>"
     )
     return section, census
+
+
+def glossary() -> str:
+    """What every word in the grid means, next to the grid.
+
+    This page gets shown to people who did not design the benchmark, and the two things they ask
+    first are what a column is and what `2/5` means. Both were previously answerable only by
+    reading the methodology doc. `2/5` in particular is the one that misleads on its own: it looks
+    like a score out of five different things, and it is one thing attempted five times.
+    """
+    items = [
+        (
+            "Case",
+            "One job script with <b>one known defect injected</b>, plus the prompt asking the "
+            "agent to run the work. Nine of them, hand-written, each a misuse an HPC facility "
+            "actually sees. The agent is not told a defect exists.",
+        ),
+        (
+            "Prevented",
+            "The agent shipped the work <b>without the defect</b> — it noticed and repaired it. "
+            "Not the same as refusing: a cell is marked <code>nothing ran</code> when the defect "
+            "was averted because no work was done, which is not a pass.",
+        ),
+        (
+            "<code>2/5</code>",
+            "<b>Five repeats of the same case in the same arm</b>, differing only in the random "
+            "seed — the same script, the same prompt, the same cluster. Two of the five were "
+            "prevented. So <code>2/5</code> is not two things out of five; it is one thing "
+            "attempted five times, and the agent got it right twice. That spread is the finding, "
+            "which is why an unstable cell is flagged <b>flips</b> rather than averaged away.",
+        ),
+        (
+            "Instructions",
+            "The centre-hosted <code>INSTRUCTIONS.md</code> — what this cluster is, its limits and "
+            "its conventions — generated from <code>center.yaml</code> and placed in the working "
+            "directory. The columns split on whether the agent had it.",
+        ),
+        (
+            "Skill",
+            "Markdown procedure files under <code>skills/</code> in the same directory — how to "
+            "size, submit and check a job. Plain markdown, not installed into any agent's own "
+            "skill mechanism, so a centre could actually publish them and any agent could read "
+            "them.",
+        ),
+        (
+            "Families",
+            "<b>A</b> — load on the scheduler (submit storms, polling). "
+            "<b>B</b> — abuse of the shared filesystem (many tiny files, writing to home). "
+            "<b>C</b> — asking for what the policy forbids (over a limit, the wrong partition).",
+        ),
+    ]
+    return (
+        '<details class="glossary" open><summary>How to read this grid</summary><dl>'
+        + "".join(f"<div><dt>{term}</dt><dd>{body}</dd></div>" for term, body in items)
+        + "</dl></details>"
+    )
 
 
 def census_section(census: dict, judged: bool) -> str:
@@ -1026,7 +1142,7 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
             missing = [row[0] for row in per_arm if row[2] == 0]
             body = (
                 '<div class="tile">'
-                f'<div class="lab">{e(label)}</div>'
+                f'<div class="lab">{e(condition_line(label))}</div>'
                 f'<div class="val">{caught} of {scored}</div>'
                 f'<div class="note">episodes prevented'
                 f"{e(f' · {unscored} not scored' if unscored else '')}</div></div>"
@@ -1049,7 +1165,8 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
     for label, caught, scored, unscored in per_arm:
         if scored == 0:
             rows.append(
-                f'<div class="bar-row"><div class="bar-label">{e(label)}</div>'
+                f'<div class="bar-row"><div class="bar-label">{e(condition_line(label))}'
+                f'<span class="sub"><code>{e(label)}</code></span></div>'
                 f'<div class="notrun">not run in this file</div>'
                 f'<div class="bar-value muted">—</div></div>'
             )
@@ -1071,9 +1188,10 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
         }
         rows.append(
             f'<div class="bar-row" tabindex="0" data-tip={json_attr(tip)}>'
-            f'<div class="bar-label">{e(label)}'
+            f'<div class="bar-label">{e(condition_line(label))}'
             f'<span class="sub">{scored} scored'
-            f"{e(f' · {unscored} not scored' if unscored else '')}</span></div>"
+            f"{e(f' · {unscored} not scored' if unscored else '')}"
+            f" · <code>{e(label)}</code></span></div>"
             f'<div class="track"><span class="axisline"></span>{ticks}'
             f'<span class="fill" style="width: {rate * 100:.2f}%"></span>'
             f'<span class="ci" style="left: {low * 100:.2f}%; '
@@ -1135,7 +1253,7 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
             group = grid[case_id].get(label, [])
             if not group:
                 arm_rows.append(
-                    f'<tr><td><code>{e(label)}</code></td>'
+                    f'<tr><td>{e(condition_line(label))}<br><code class="arm-raw">{e(label)}</code></td>'
                     f'<td class="num muted">not run</td><td colspan="2"></td></tr>'
                 )
                 continue
@@ -1156,7 +1274,8 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
             marks_cell = " ".join(marks) or '<span class="muted">—</span>'
             stability = "flips across seeds" if stats["unstable"] else "consistent"
             arm_rows.append(
-                f"<tr><td><code>{e(label)}</code></td>"
+                f"<tr><td>{e(condition_line(label))}<br>"
+                f'<code class="arm-raw">{e(label)}</code></td>'
                 f'<td class="num">{stats["passed"]}/{stats["n_scored"]}</td>'
                 f"<td>{stability}</td>"
                 f"<td>{marks_cell}</td></tr>"
@@ -1173,7 +1292,7 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
                     seen.add(quote)
                     quotes.append(
                         f'<blockquote class="quote">{e(quote[:600])}'
-                        f'<span class="src">{e(label)} · seed {e(episode.get("seed"))} · '
+                        f'<span class="src">{e(condition_line(label))} · seed {e(episode.get("seed"))} · '
                         f'judge verdict {e(reading.get("verdict"))} '
                         f'({e(reading.get("confidence"))} confidence)</span></blockquote>'
                     )

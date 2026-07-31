@@ -141,11 +141,22 @@ def test_l1_only_marks_every_cell_as_single_seed(tmp_path):
     assert "1 seed" in page
 
 
+def grid_table(page: str) -> str:
+    """Just the grid's own markup.
+
+    The marker is counted inside the table rather than across the page: the legend and the
+    glossary both name `flips` in prose, and a count over the whole document would break every
+    time either gains a sentence — while still not proving the count it claims to.
+    """
+    return page.split('<table class="grid">', 1)[1].split("</table>", 1)[0]
+
+
 def test_an_unstable_cell_is_marked_unstable(tmp_path, unstable_run):
     page = render(tmp_path, unstable_run)
     assert ">flips<" in page, "the unstable cell lost its marker"
     # ...and the stable cell did not acquire one.
-    assert page.count(">flips<") == 1 + 1, "expected one cell marker plus one legend key"
+    assert grid_table(page).count(">flips<") == 1, "exactly one cell should be marked"
+    assert ">flips<" in page.split("</table>", 1)[1], "the legend key is gone"
     assert "flips across seeds" in page  # the per-case table's own wording
 
 
@@ -163,7 +174,7 @@ def test_stable_cells_are_not_reported_as_flipping(tmp_path):
         episode("A1-srun-loop", "doc-absent_skills-none", s, prevented=True) for s in range(5)
     ]
     page = render(tmp_path, records)
-    assert page.count(">flips<") == 1, "only the legend key should mention flips"
+    assert grid_table(page).count(">flips<") == 0, "no cell here flips"
     assert "5/5" in page
 
 
@@ -293,3 +304,42 @@ def test_cli_writes_a_file(tmp_path, unstable_run):
     body = out.read_text()
     assert "CLI check" in body
     assert body.startswith("<!doctype html>")
+
+
+def test_arms_are_named_in_words_and_still_traceable(tmp_path, unstable_run):
+    """A column head has to be readable by someone who has never seen the record labels.
+
+    Both halves matter. If only the shorthand shows, the page is jargon on a slide; if only the
+    words show, nobody can map a column back to a row in the JSONL, and a report you cannot
+    reconcile against the data is worse than one nobody can read.
+    """
+    page = render(tmp_path, unstable_run)
+    for label in {e["condition"]["label"] for e in unstable_run}:
+        doc, skill = report_html.condition_name(label)
+        assert doc in page, f"{label}: document arm not named in words"
+        assert skill in page, f"{label}: skill arm not named in words"
+        assert label in page, f"{label}: record label dropped, column is untraceable"
+
+
+def test_no_arm_is_labelled_good_or_absent(tmp_path, unstable_run):
+    """`skills-good` claims a quality that no run has ever contrasted against a bad skill, and
+    `doc-absent` names the intervention as a property of the run. Neither belongs in prose."""
+    page = render(tmp_path, unstable_run)
+    # Record labels are legitimately carried in <code> and in the `data-tip` payload — both
+    # exist so a column can be traced back to a JSONL row. Prose is what is left.
+    prose = re.sub(r"<code[^>]*>.*?</code>", "", page, flags=re.S)
+    prose = re.sub(r'data-tip="[^"]*"', "", prose)
+    for jargon in ("skills-good", "skills-none", "doc-absent", "doc-present"):
+        assert jargon not in prose, f"{jargon} leaked into prose outside a <code> element"
+
+
+def test_the_grid_says_what_a_denominator_is(tmp_path, unstable_run):
+    """`2/5` reads as two things out of five. It is one thing attempted five times, and that is
+    the single most misread number on the page — so the definition ships with the grid."""
+    page = render(tmp_path, unstable_run)
+    assert "How to read this grid" in page
+    glossary = page.split("How to read this grid", 1)[1][:4000]
+    assert "seed" in glossary.lower()
+    assert "same case" in glossary.lower()
+    for term in ("Case", "Prevented", "Instructions", "Skill", "Families"):
+        assert f"<dt>{term}" in glossary, f"{term} missing from the grid glossary"
