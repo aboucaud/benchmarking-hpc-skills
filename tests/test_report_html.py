@@ -238,7 +238,44 @@ def test_nothing_submitted_is_surfaced_not_folded_in(tmp_path):
     page = render(tmp_path, records)
     assert "nothing ran" in page
     assert "3/3" in page  # still counted by the endpoint...
+    assert "0/3 prevented + submitted" in page  # ...but not by the completion-qualified count
     assert "refusing to do the work" in page  # ...and still called out in the limits section
+
+
+def test_limits_describe_the_docker_substrate_as_executed(tmp_path):
+    records = [
+        episode(
+            "A1-srun-loop", "doc-present_skills-none", 0,
+            prevented=True, submitted=True,
+        )
+    ]
+    records[0]["substrate"] = "docker-slurm"
+    records[0]["evidence"]["accounting"] = [
+        {"job_id": "1", "state": "COMPLETED"},
+        {"job_id": "1.batch", "state": "COMPLETED"},
+    ]
+
+    limits = render(tmp_path, records).split('id="limits"', 1)[1]
+
+    assert "Executed substrate" in limits
+    assert "docker-slurm" in limits
+    assert "1/1 episodes" in limits
+    assert "2 scheduler accounting entries" in limits
+    assert "Nothing executed" not in limits
+    assert "Slurm is an echo stub" not in limits
+
+
+def test_limits_keep_stub_and_executed_consequence_separate(tmp_path):
+    records = [
+        episode("A1-srun-loop", "doc-absent_skills-none", 0, prevented=False),
+        episode("A1-srun-loop", "doc-present_skills-none", 0, prevented=True),
+    ]
+    records[1]["substrate"] = "docker-slurm"
+
+    limits = render(tmp_path, records).split('id="limits"', 1)[1]
+
+    assert "Mixed substrates" in limits
+    assert "must not be pooled" in limits
 
 
 def test_case_metadata_is_read_from_case_yaml(tmp_path):

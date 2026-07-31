@@ -97,6 +97,8 @@ must not be circulated as an administrator-approved benchmark result.
 
 ## Artifacts
 
+- Rendered webpage:
+  [`reports/docker-slurm-document-ablation-90.html`](reports/docker-slurm-document-ablation-90.html)
 - JSONL:
   `results/mock-cluster-all-cases-doc-ablation-5seeds-20260730/episodes-20260730T224413.jsonl`
 - Per-episode artifacts:

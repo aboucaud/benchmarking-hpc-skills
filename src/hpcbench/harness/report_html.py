@@ -1090,9 +1090,11 @@ def glossary() -> str:
         ),
         (
             "Prevented",
-            "The agent shipped the work <b>without the defect</b> — it noticed and repaired it. "
-            "Not the same as refusing: a cell is marked <code>nothing ran</code> when the defect "
-            "was averted because no work was done, which is not a pass.",
+            "The episode reached a safe final state under the report's endpoint. In an unjudged "
+            "file that is the mechanical L1 static, call-log, regression and runtime result; in "
+            "a judged file L1 and L2 must agree. It does <b>not</b> require a submission: "
+            "<code>nothing ran</code> marks those episodes, and the condition comparison reports "
+            "the stricter <i>prevented + submitted</i> count alongside it.",
         ),
         (
             "<code>2/5</code>",
@@ -1196,7 +1198,7 @@ def census_section(census: dict, judged: bool) -> str:
 
 
 def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) -> str:
-    """Prevented per condition.
+    """Prevented per condition, with submission-qualified prevention alongside it.
 
     Form chosen by the skill's heuristic rather than by habit: with two or more arms carrying data
     the reader's job is to compare magnitudes, which is a bar chart — horizontal, because the
@@ -1208,9 +1210,17 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
         group = [episode for episode in episodes if episode["condition"]["label"] == label]
         scored = [episode for episode in group if endpoint_of(episode) is not None]
         caught = sum(1 for episode in scored if endpoint_of(episode))
-        per_arm.append((label, caught, len(scored), len(group) - len(scored)))
+        caught_and_submitted = sum(
+            1
+            for episode in scored
+            if endpoint_of(episode)
+            and (episode.get("evidence") or {}).get("workload_submitted")
+        )
+        per_arm.append(
+            (label, caught, caught_and_submitted, len(scored), len(group) - len(scored))
+        )
 
-    populated = [row for row in per_arm if row[2] > 0]
+    populated = [row for row in per_arm if row[3] > 0]
 
     caveat = (
         f"{caveat_tail(len({episode['case'] for episode in episodes}))} This aggregate pools "
@@ -1222,13 +1232,14 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
         if not populated:
             body = '<p class="notrun">No arm in this file has a scored episode.</p>'
         else:
-            label, caught, scored, unscored = populated[0]
-            missing = [row[0] for row in per_arm if row[2] == 0]
+            label, caught, caught_and_submitted, scored, unscored = populated[0]
+            missing = [row[0] for row in per_arm if row[3] == 0]
             body = (
                 '<div class="tile">'
                 f'<div class="lab">{e(condition_line(label))}</div>'
                 f'<div class="val">{caught} of {scored}</div>'
-                f'<div class="note">episodes prevented'
+                f'<div class="note">episodes prevented · {caught_and_submitted}/{scored} '
+                f'prevented + submitted'
                 f"{e(f' · {unscored} not scored' if unscored else '')}</div></div>"
                 + (
                     '<p class="notrun" style="margin-top:12px">Not run in this file: '
@@ -1246,7 +1257,7 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
         )
 
     rows = []
-    for label, caught, scored, unscored in per_arm:
+    for label, caught, caught_and_submitted, scored, unscored in per_arm:
         if scored == 0:
             rows.append(
                 f'<div class="bar-row"><div class="bar-label">{e(condition_line(label))}'
@@ -1267,7 +1278,10 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
             "condition": f"{scored} scored episodes"
             + (f" · {unscored} not scored" if unscored else ""),
             "headline": f"{caught}/{scored} prevented ({rate * 100:.0f}%)",
-            "rows": [["95% Wilson interval", f"{low * 100:.0f}% – {high * 100:.0f}%"]],
+            "rows": [
+                ["prevented + submitted", f"{caught_and_submitted}/{scored}"],
+                ["95% Wilson interval", f"{low * 100:.0f}% – {high * 100:.0f}%"],
+            ],
             "foot": "Interval assumes independent episodes. They are not: the seeds within a "
                     "case share a script and a prompt, so this is wider than it looks.",
         }
@@ -1276,7 +1290,8 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
             f'<div class="bar-label">{e(condition_line(label))}'
             f'<span class="sub">{scored} scored'
             f"{e(f' · {unscored} not scored' if unscored else '')}"
-            f" · <code>{e(label)}</code></span></div>"
+            f" · <code>{e(label)}</code><br>{caught_and_submitted}/{scored} prevented + "
+            f"submitted</span></div>"
             f'<div class="track"><span class="axisline"></span>{ticks}'
             f'<span class="fill" style="width: {rate * 100:.2f}%"></span>'
             f'<span class="ci" style="left: {low * 100:.2f}%; '
@@ -1303,8 +1318,8 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
     contrast = ""
     absent = [row for row in per_arm if row[0].startswith("doc-absent")]
     present = [row for row in per_arm if row[0].startswith("doc-present")]
-    a_k, a_n = sum(r[1] for r in absent), sum(r[2] for r in absent)
-    p_k, p_n = sum(r[1] for r in present), sum(r[2] for r in present)
+    a_k, a_n = sum(r[1] for r in absent), sum(r[3] for r in absent)
+    p_k, p_n = sum(r[1] for r in present), sum(r[3] for r in present)
     if a_n and p_n:
         p_value = fisher_two_sided(a_k, a_n - a_k, p_k, p_n - p_k)
         contrast = (
@@ -1322,7 +1337,9 @@ def arms_section(episodes: list[dict], conditions_all: list[str], judged: bool) 
         f'<p class="caveat-line">{caveat}</p></div>'
         f'<div class="card"><div class="bars">{"".join(rows)}</div>'
         f'<p class="small muted" style="margin-top:12px">Bar = share of scored episodes '
-        f"prevented. The thin rule beneath each bar is a 95% Wilson interval computed as if every "
+        f"prevented. The line under each condition reports the stricter count that also recorded "
+        f"an accepted workload submission. The thin rule beneath each bar is a 95% Wilson "
+        f"interval computed as if every "
         f"episode were an independent draw — they are not, since seeds are clustered within a "
         f"case, so the true interval is wider than drawn.</p>{contrast}</div></section>"
     )
@@ -1623,7 +1640,44 @@ def layers_section(episodes: list[dict], conditions_all: list[str]) -> str:
     )
 
 
-def limits_section() -> str:
+def substrate_limit(episodes: list[dict]) -> str:
+    """Explain whether consequence was inferred by stubs or executed by a scheduler."""
+    substrates = sorted(
+        {str(episode.get("substrate") or "echo-stub") for episode in episodes}
+    )
+    if substrates == ["echo-stub"]:
+        return (
+            "<li><b>Nothing executed.</b> No node was allocated and no file written. Slurm is an "
+            "echo stub; family B is scored from the text of the script, and every L3 figure is a "
+            "projection.</li>"
+        )
+    if "echo-stub" in substrates:
+        names = ", ".join(f"<code>{e(name)}</code>" for name in substrates)
+        return (
+            f"<li><b>Mixed substrates: {names}.</b> Consequence is executed under the scheduler "
+            "substrate and inferred from script text under <code>echo-stub</code>. These are not "
+            "the same measurement and must not be pooled into one rate.</li>"
+        )
+
+    submitted = sum(
+        bool((episode.get("evidence") or {}).get("workload_submitted"))
+        for episode in episodes
+    )
+    accounting = sum(
+        len((episode.get("evidence") or {}).get("accounting") or [])
+        for episode in episodes
+    )
+    names = ", ".join(f"<code>{e(name)}</code>" for name in substrates)
+    return (
+        f"<li><b>Executed substrate: {names}.</b> {submitted}/{len(episodes)} episodes recorded "
+        f"an accepted workload submission and the records contain {accounting} scheduler "
+        "accounting entries. Consequence is observed on the laptop mock cluster rather than "
+        "inferred from an echo stub; this still does not reproduce production scale, queueing, "
+        "or filesystem load.</li>"
+    )
+
+
+def limits_section(episodes: list[dict]) -> str:
     return (
         '<section id="limits"><div class="sec-head"><h2>What this does not measure</h2></div>'
         '<div class="card"><ul class="plain">'
@@ -1632,15 +1686,12 @@ def limits_section() -> str:
         "same mistake itself. That is the difference between <i>the skill teaches an agent to "
         "spot misuse</i> and <i>the skill prevents misuse</i>, and only the first is measured."
         "</li>"
-        "<li><b>Nothing executed.</b> No node was allocated and no file written. Slurm is an "
-        "echo stub; family B is scored from the text of the script.</li>"
-        "<li><b>L3 is projected only.</b> Any cost or node-hour figure elsewhere in this project "
-        "is a projection from a descriptor, not a measurement of a cluster.</li>"
+        f"{substrate_limit(episodes)}"
         "<li><b>The richest arm can look good by refusing to do the work.</b> An episode that "
         "prevents the defect and submits nothing is counted as prevented by the endpoint, and it "
         "is not the same result as one that repaired the script and ran it. Those episodes are "
-        "flagged in the grid (<i>nothing ran</i>) and listed per case; they are never folded into "
-        "a headline.</li>"
+        "flagged in the grid (<i>nothing ran</i>) and listed per case. The condition comparison "
+        "reports <i>prevented + submitted</i> alongside the raw prevented count.</li>"
         "<li><b>No case has sysadmin sign-off.</b> Until it does, this is a pilot measuring "
         "itself.</li>"
         "</ul></div></section>"
@@ -1698,7 +1749,7 @@ def build_page(
         f"{layers_section(episodes, conditions)}"
         f"{arms_section(episodes, conditions, judged)}"
         f"{table_section(episodes)}"
-        f"{limits_section()}"
+        f"{limits_section(episodes)}"
         f'<footer class="meta">Generated {e(generated)} by '
         f"<code>hpcbench.harness.report_html</code> from {source_list}. "
         f"Counts are computed with the same functions as <code>report.py</code> "
