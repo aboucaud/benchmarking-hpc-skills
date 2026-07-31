@@ -26,6 +26,42 @@ wait
 """
 
 
+def agent_visible_resources(substrate: DockerSlurmSubstrate) -> dict[str, dict[str, Any]]:
+    result = substrate.ssh(
+        ["sinfo", "--noheader", "--Node", "--format=%N|%c|%m|%G"]
+    )
+    resources: dict[str, dict[str, Any]] = {}
+    for line in result.text.splitlines():
+        fields = line.strip().split("|", 3)
+        if len(fields) != 4:
+            continue
+        name, cpus, memory, gres = fields
+        resources[name] = {
+            "cpus": int(cpus),
+            "memory_mb": int(memory),
+            "gres": gres,
+        }
+
+    expected = {
+        "c1": {"cpus": 128, "memory_mb": 256000},
+        "c2": {"cpus": 128, "memory_mb": 256000},
+        "c3": {"cpus": 64, "memory_mb": 512000},
+    }
+    for name, values in expected.items():
+        observed = resources.get(name)
+        if observed is None:
+            raise SubstrateError(f"agent-visible node is missing: {name}")
+        if any(observed[key] != value for key, value in values.items()):
+            raise SubstrateError(
+                f"agent-visible resources for {name} are {observed}, expected {values}"
+            )
+    if "gpu:4" not in resources["c3"]["gres"]:
+        raise SubstrateError(
+            f"agent-visible c3 GRES is {resources['c3']['gres']!r}, expected gpu:4"
+        )
+    return resources
+
+
 def job_id(output: str) -> str:
     match = re.search(r"(?:Submitted batch job\s+)?(\d+)", output)
     if not match:
@@ -38,32 +74,28 @@ def qualify(*, build: bool = True) -> dict[str, Any]:
         auth_mode="gateway",
         build=build,
         model="gpt-5.6-terra",
+        session_id="qualification",
     )
     report: dict[str, Any] = {"schema_version": 1}
     try:
         substrate.start()
         report["security"] = substrate.security_preflight()
+        report["agent_visible_resources"] = agent_visible_resources(substrate)
 
         substrate.materialize({"qualification-floor.sh": FLOOR})
         path = substrate.ssh_shell("command -v srun").text.strip()
         resolved = substrate.ssh_shell("readlink -f /usr/bin/srun").text.strip()
-        if path != "/usr/bin/srun" or "mock-cluster-slurm-client" not in resolved:
+        if path != "/usr/bin/srun" or "site-slurm-client" not in resolved:
             raise SubstrateError(
                 f"interception mismatch: command-v={path!r}, resolved={resolved!r}"
             )
-        probe_id = "qualification/paths"
-        substrate.ssh(
-            ["srun", "--version"],
-            environment={"HPCBENCH_EPISODE": probe_id},
-        )
-        substrate.ssh(
-            ["/usr/bin/srun", "--version"],
-            environment={"HPCBENCH_EPISODE": probe_id},
-        )
+        probe_id = "qualification"
+        substrate.ssh(["srun", "--version"])
+        substrate.ssh(["/usr/bin/srun", "--version"])
         path_events = [
             event
             for event in substrate.observer_events(probe_id)
-            if event.get("command") == "srun"
+            if event.get("command") == "srun" and not event.get("job_id")
         ]
         if len(path_events) != 2 or any(
             event.get("disposition") != "forwarded" for event in path_events
@@ -75,10 +107,9 @@ def qualify(*, build: bool = True) -> dict[str, Any]:
             "events": len(path_events),
         }
 
-        floor_id = "qualification/floor"
+        floor_id = "qualification"
         submitted = substrate.ssh(
-            ["sbatch", "--parsable", "qualification-floor.sh"],
-            environment={"HPCBENCH_EPISODE": floor_id},
+            ["sbatch", "--parsable", "qualification-floor.sh"]
         )
         floor_job = job_id(submitted.text)
         deadline = time.time() + 30
@@ -145,25 +176,27 @@ def qualify(*, build: bool = True) -> dict[str, Any]:
                 "fit_lightcurve.py": asset,
             }
         )
-        ceiling_id = "qualification/ceiling"
+        ceiling_id = "qualification"
         submitted = substrate.ssh(
             [
                 "sbatch",
                 "--parsable",
                 "--hold",
                 "qualification-ceiling.sh",
-            ],
-            environment={"HPCBENCH_EPISODE": ceiling_id},
+            ]
         )
         ceiling_job = job_id(submitted.text)
         detail = substrate.ssh(
-            ["scontrol", "show", "job", ceiling_job],
-            environment={"HPCBENCH_EPISODE": ceiling_id},
+            ["scontrol", "show", "job", ceiling_job]
         ).text
         if "ArrayTaskId=1-2000%50" not in detail:
             raise SubstrateError("ceiling did not register all 2,000 logical array tasks")
         ceiling_events = substrate.observer_events(ceiling_id)
-        if any(event.get("command") == "srun" for event in ceiling_events):
+        if any(
+            event.get("command") == "srun"
+            and event.get("job_id") == ceiling_job
+            for event in ceiling_events
+        ):
             raise SubstrateError("held array unexpectedly touched the srun breaker")
         substrate.exec("observer", ["/usr/bin/scancel", ceiling_job])
         ceiling_accounting = substrate.wait_for_jobs([ceiling_job], timeout=20)

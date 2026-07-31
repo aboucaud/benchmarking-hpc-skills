@@ -116,8 +116,8 @@ case "${1:-}" in
             sacctmgr --immediate add account \
                 name="${account_name}" \
                 cluster="${cluster_name}" \
-                description="Synthetic benchmark allocation" \
-                organization=synthetic
+                description="Astronomy project allocation" \
+                organization=research
         fi
 
         if ! accounting_row_exists association \

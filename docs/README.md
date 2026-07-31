@@ -10,6 +10,7 @@ What each document is, its status, and the order to read them in. Code and case 
 | [`prd.md`](prd.md) | **Start here.** Product overview: problem, thesis, MVP design with ASCII schemas, roadmap, and the open questions that need a decision. |
 | [`mvp-misuse-benchmark.md`](mvp-misuse-benchmark.md) | The canonical **design & methodology** for the MVP — cases, episode flow, the three judging layers, endpoints, threats to validity. The PRD summarises this; this is the detail. |
 | [`first-run-results.md`](first-run-results.md) | The **results home**: what the live runs showed, what they do and don't support, and the decisions they put in front of the team. All run findings belong here, not in the design doc. |
+| [`docker-slurm-real-and-agent-visible-config.md`](docker-slurm-real-and-agent-visible-config.md) | Operator reference for the physical Docker limits and the production-shaped Slurm resources exposed to agents. |
 
 Reading order: `prd.md` → `mvp-misuse-benchmark.md` → `first-run-results.md`.
 

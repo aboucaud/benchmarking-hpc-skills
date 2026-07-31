@@ -45,11 +45,11 @@ RUN set -eux \
     && ssh-keygen -A \
     && mkdir -p /run/sshd \
     && { \
-        echo "# Local test cluster only"; \
+        echo "# Managed login service"; \
         echo "PasswordAuthentication yes"; \
         echo "UsePAM no"; \
         echo "PermitRootLogin no"; \
-    } > /etc/ssh/sshd_config.d/50-mock-slurm.conf
+    } > /etc/ssh/sshd_config.d/50-site.conf
 
 COPY demo-user.bashrc /home/demo_user/.bashrc
 RUN chown demo_user:demo_user /home/demo_user/.bashrc \
@@ -90,7 +90,7 @@ RUN set -eux \
         /archive/demo_user \
         /data \
         /episode/work \
-        /etc/mock-slurm \
+        /etc/site-software \
         /etc/slurm \
         /run/munge \
         /scratch/demo_user \
@@ -120,12 +120,13 @@ COPY slurm.conf /etc/slurm/slurm.conf
 COPY gres.conf /etc/slurm/gres.conf
 COPY slurmdbd.conf /etc/slurm/slurmdbd.conf
 COPY cgroup.conf /etc/slurm/cgroup.conf
-COPY modules.txt /etc/mock-slurm/modules.txt
+COPY modules.txt /etc/site-software/modules.txt
 COPY module /usr/local/bin/module
 COPY codex-benchmark /usr/local/bin/codex-benchmark
 
 RUN chown -R slurm:slurm /etc/slurm \
     && chmod 0600 /etc/slurm/slurmdbd.conf \
+    && chmod 0640 /etc/slurm/gres.conf \
     && chmod 0755 /usr/local/bin/codex-benchmark /usr/local/bin/module
 
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

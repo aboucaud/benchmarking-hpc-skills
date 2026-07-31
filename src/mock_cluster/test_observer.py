@@ -67,7 +67,6 @@ def test_forwarded_environment_has_no_codex_or_api_secret():
     clean = safe_environment(
         {
             "SLURM_JOB_ID": "42",
-            "HPCBENCH_EPISODE": "A1/test",
             "OPENAI_API_KEY": "must-not-forward",
             "CODEX_ACCESS_TOKEN": "must-not-forward",
             "HOME": "/attacker",
@@ -75,7 +74,6 @@ def test_forwarded_environment_has_no_codex_or_api_secret():
     )
 
     assert clean["SLURM_JOB_ID"] == "42"
-    assert clean["HPCBENCH_EPISODE"] == "A1/test"
     assert clean["HOME"] == "/home/demo_user"
     assert "OPENAI_API_KEY" not in clean
     assert "CODEX_ACCESS_TOKEN" not in clean

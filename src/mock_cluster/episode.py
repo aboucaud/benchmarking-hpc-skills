@@ -175,6 +175,7 @@ class DockerEpisode:
         substrate = DockerSlurmSubstrate(
             auth_mode=self.auth_mode,
             model=self.model,
+            session_id=episode_id,
             build=self.build,
         )
         run_result = RunResult()

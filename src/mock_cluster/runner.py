@@ -98,7 +98,7 @@ class CodexExecRunner:
 
     def command(self, substrate: DockerSlurmSubstrate, episode_id: str) -> list[str]:
         codex_home = (
-            "/run/mock-codex"
+            "/run/site-codex"
             if substrate.auth_mode == "gateway"
             else "/home/demo_user/.codex"
         )
@@ -122,7 +122,6 @@ class CodexExecRunner:
         return [
             "env",
             f"CODEX_HOME={codex_home}",
-            f"HPCBENCH_EPISODE={episode_id}",
             *command,
         ]
 

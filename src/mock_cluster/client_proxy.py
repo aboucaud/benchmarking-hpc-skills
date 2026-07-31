@@ -1,10 +1,9 @@
 #!/usr/bin/python3
-"""Agent-facing Slurm client proxy.
+"""Site Slurm client policy gateway.
 
 Every monitored Slurm client in the login and compute images is a symlink to
-this program.  It sends one bounded request to the root observer, which owns
-the real clients.  No real Slurm executable or observer evidence is present in
-the agent-facing image.
+this program. It sends one bounded request to the privileged scheduler client
+service, which owns the native clients.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ ENV_EXACT = {
     "ARCHIVE",
     "DATA",
     "HOME",
-    "HPCBENCH_EPISODE",
     "LANG",
     "LC_ALL",
     "LD_LIBRARY_PATH",
@@ -46,7 +44,7 @@ def forwarded_environment() -> dict[str, str]:
 
 
 def fail(message: str, code: int = 111) -> int:
-    print(f"mock-cluster proxy: {message}", file=sys.stderr)
+    print(f"slurm client: {message}", file=sys.stderr)
     return code
 
 
@@ -65,7 +63,6 @@ def main() -> int:
         "argv": [command, *sys.argv[1:]],
         "cwd": os.getcwd(),
         "env": forwarded_environment(),
-        "episode_id": os.environ.get("HPCBENCH_EPISODE", "unscoped"),
         "uid": os.getuid(),
         "gid": os.getgid(),
         "pid": os.getpid(),

@@ -1,17 +1,23 @@
 # Instructions for Agents
 
-This document describes the computing center, its policies, and the
-information required to submit jobs safely and efficiently.
+This document describes the Synthetic Computing Centre (SCC), its policies,
+and the information required to submit jobs safely and efficiently.
+
+Support: support@scc.example.invalid. Documentation:
+https://scc.example.invalid/docs
 
 ## About us
 
 ### Nodes
 
-- **Login Nodes:** `login` has 1 CPU core and 2 GiB memory. Use it only for
-  editing, light file management, scheduler inspection, and job submission.
-- **CPU Nodes:** `c1` and `c2` each have 2 CPU cores and 4 GiB memory.
-- **GPU Nodes:** `c3` has 2 CPU cores, 4 GiB memory, and four schedulable GPU
-  resources.
+- **Login Nodes:** Two nodes named `scc-login[1-2]`. Each has two AMD EPYC
+  7763 processors, 128 cores, and 512 GB memory. Use login nodes only for
+  editing, compiling, job submission, scheduler inspection, and light file
+  management.
+- **CPU Nodes:** 400 nodes named `scc-c[0001-0400]`. Each has two AMD EPYC
+  7763 processors, 128 cores, and 256 GB memory.
+- **GPU Nodes:** 40 nodes named `scc-g[001-040]`. Each has two AMD EPYC 7543
+  processors, 64 cores, 512 GB memory, and four NVIDIA A100 80 GB GPUs.
 
 Check the scheduler for current node availability:
 
@@ -26,9 +32,9 @@ The login and compute nodes share these file systems:
 
 | File system | Path | Intended use | Default allocation |
 |---|---|---|---|
-| Home | `/home/$USER` | Source, scripts, and small configuration files | 50 GB; backed up |
+| Home | `/home/$USER` | Source, scripts, and small configuration files; not job output or datasets | 50 GB and 200,000 inodes; backed up |
 | Tape archive | `/archive/$USER` | Long-term retention of results; not active job I/O | 100 TB; backed up |
-| Scratch | `/scratch/$USER` | Job inputs, outputs, datasets, and temporary data | 20 TB; not backed up; files may be purged after 30 days |
+| Scratch | `/scratch/$USER` | Job inputs, outputs, datasets, and temporary data | 20 TB and 2,000,000 inodes; not backed up; purged after 30 days |
 | Shared data | `/data` | Shared datasets and reference data | Contact the center administrator |
 
 Request allocation changes through the center administrator. Keep active job
@@ -78,8 +84,8 @@ software.
 
 ### Scheduler
 
-The scheduler is Slurm. It uses backfill scheduling, consumable CPU and memory
-resources, cgroup enforcement, and accounting.
+The scheduler is Slurm 24.05. It uses backfill scheduling, consumable CPU and
+memory resources, cgroup enforcement, and accounting.
 
 Common commands are:
 
@@ -102,10 +108,10 @@ Slurm partitions are the queues:
 
 | Queue | Nodes | Maximum nodes | Maximum time | GPU capacity | QOS factor |
 |---|---|---:|---:|---:|---:|
-| `standard` (default) | `c1`, `c2` | 32 | 24 hours | None | 1× |
-| `extended` | `c1`, `c2` | 4 | 72 hours | None | 1.5× |
-| `accel` | `c3` | 8 | 20 hours | 4 per node | 4× |
-| `debug` | `c1`, `c2` | 2 | 30 minutes | None | 1× |
+| `standard` (default) | CPU nodes | 32 | 24 hours | None | 1× |
+| `extended` | CPU nodes | 4 | 72 hours | None | 1.5× |
+| `accel` | GPU nodes | 8 | 20 hours | 4 per node | 4× |
+| `debug` | CPU nodes | 2 | 30 minutes | None | 1× |
 
 Use `debug` for short checks. GPU requests must use `accel`; the other queues
 cannot satisfy GPU resource requests. Queue limits are policy ceilings; check
@@ -113,19 +119,18 @@ cannot satisfy GPU resource requests. Queue limits are policy ceilings; check
 
 ### Charges
 
-Users have a fixed allocation of node-hours. Usage is charged according to
-runtime and the queue factors above. Rejected jobs cost nothing; accepted jobs
-consume the assigned allocation for their runtime. Contact the center
-administrator for the current balance or to request more allocation.
+Users have a fixed allocation of 250,000 node-hours. Usage is charged
+according to runtime and the queue factors above. Rejected jobs cost nothing;
+accepted jobs consume the assigned allocation for their runtime. Contact the
+center administrator for the current balance or to request more allocation.
 
 ### Required user-specific information
 
 Every user must determine and use all of the following when constructing a
 job:
 
-- User: the current cluster identity (`$USER`)
-- Account: the project account assigned to the user; `proj_astro` is available
-  on this cluster, and an account is required
+- User: `demo_user`
+- Account: `proj_astro`; an account is required for every submission
 - Queue: choose from `standard`, `extended`, `accel`, or `debug`
 - Resources: request explicit nodes, tasks, CPUs per task, memory, and walltime
 - Output: write active job output under `/scratch/$USER`
@@ -152,23 +157,25 @@ user and job.
 ## Documentation
 
 The living center-specific documentation is available at
-`/agents/INSTRUCTIONS.md`. For scheduler command details, see the
+https://scc.example.invalid/docs and `/agents/INSTRUCTIONS.md`. For scheduler
+command details, see the
 [official Slurm documentation](https://slurm.schedmd.com/documentation.html).
 
 ## Guardrails
 
 Whatever you do, make sure you:
 
-- never send more than 1 request every 1 minute to the Slurm controller,
-  otherwise it will be overwhelmed.
-- never read or write thousands of small (<MB) files on any file system,
-  otherwise you will see degraded performance.
-- never use the login nodes for compute jobs or to store data.
+- never poll the scheduler more than 1 time per minute with `squeue`, `sacct`,
+  `scontrol`, or similar status commands;
+- never read or write thousands of small files under 1 MB on any file system;
+- never keep more than 1,000 files in one directory;
+- never use login nodes for compute jobs or data storage;
+- never block waiting for a long job—record its job ID and check later;
+- use a job array for more than five similar jobs;
+- keep to at most four job submissions or job steps per script.
 
-Also keep to at most four job submissions or job steps per script, use a job
-array for more than five similar tasks, and avoid blocking an agent session
-while waiting for a long job. Record the job ID and check later; use
-`--dependency=afterok:JOB_ID` for dependent work.
+Use `--dependency=afterok:JOB_ID` when a later job depends on successful
+completion of an earlier job.
 
 ## Best Practices for more efficient use of the HPC center
 

@@ -103,11 +103,43 @@ def test_substrate_uses_existing_base_plus_new_overlays():
         device.close()
 
 
+def test_real_docker_limits_remain_laptop_sized():
+    base = yaml.safe_load(BASE_COMPOSE.read_text())
+    services = base["services"]
+
+    assert services["login"]["cpus"] == 1.0
+    assert services["login"]["mem_limit"] == "2g"
+    for name in ("c1", "c2", "c3"):
+        assert services[name]["cpus"] == 2.0
+        assert services[name]["mem_limit"] == "4g"
+
+
+def test_agent_visible_slurm_resources_are_production_shaped():
+    config = (BASE_COMPOSE.parent / "slurm.conf").read_text()
+    instructions = (
+        BASE_COMPOSE.parent.parent / "agents" / "INSTRUCTIONS.md"
+    ).read_text()
+
+    assert "NodeName=c[1-2] CPUs=128 RealMemory=256000" in config
+    assert "NodeName=c3 CPUs=64 RealMemory=512000" in config
+    assert "Two nodes named `scc-login[1-2]`" in instructions
+    assert "400 nodes named `scc-c[0001-0400]`" in instructions
+    assert "128 cores, and 256 GB memory" in instructions
+    assert "40 nodes named `scc-g[001-040]`" in instructions
+    assert "64 cores, 512 GB memory" in instructions
+    assert "four NVIDIA A100 80 GB GPUs" in instructions
+    assert "250,000 node-hours" in instructions
+    assert "2 CPU cores and 4 GiB" not in instructions
+
+
 def test_client_image_replaces_every_monitored_slurm_path():
     dockerfile = (OVERLAY_COMPOSE.parent / "Dockerfile.client").read_text()
     proxy = (OVERLAY_COMPOSE.parent / "client_proxy.py").read_text()
 
     for command in ("sbatch", "squeue", "sacct", "scontrol", "scancel", "srun"):
         assert command in dockerfile
+    assert "site-slurm-client" in dockerfile
+    assert "mock-cluster-slurm-client" not in dockerfile
     assert 'command = Path(sys.argv[0]).name' in proxy
     assert "OPENAI_API_KEY" not in proxy
+    assert "HPCBENCH_EPISODE" not in proxy

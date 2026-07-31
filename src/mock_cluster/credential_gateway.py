@@ -96,7 +96,8 @@ class State:
             "status": status,
             "duration_s": round(time.time() - started, 4),
             "ts": started,
-            "iso": dt.datetime.now(dt.UTC).isoformat(),
+            # Rocky Linux 9's system Python is 3.9; datetime.UTC was added in 3.11.
+            "iso": dt.datetime.now(dt.timezone.utc).isoformat(),  # noqa: UP017
         }
         line = json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n"
         with self.lock, self.evidence.open("a", encoding="utf-8") as handle:
@@ -140,7 +141,7 @@ class Gateway(BaseHTTPRequestHandler):
         started = time.time()
         sequence = STATE.reserve()
         if sequence is None:
-            self.send_error(429, "episode gateway request limit reached")
+            self.send_error(429, "session gateway request limit reached")
             return
         if not STATE.key:
             self.send_error(503, "gateway has no upstream credential")

@@ -47,7 +47,6 @@ ENV_EXACT = {
     "ARCHIVE",
     "DATA",
     "HOME",
-    "HPCBENCH_EPISODE",
     "LANG",
     "LC_ALL",
     "LD_LIBRARY_PATH",
@@ -67,7 +66,8 @@ JOB_ID = re.compile(r"(?:Submitted batch job\s+)?(\d+)")
 
 
 def utc_now() -> str:
-    return dt.datetime.now(dt.UTC).isoformat()
+    # Rocky Linux 9's system Python is 3.9; datetime.UTC was added in 3.11.
+    return dt.datetime.now(dt.timezone.utc).isoformat()  # noqa: UP017
 
 
 def safe_cwd(value: str) -> str:
@@ -191,6 +191,9 @@ class Observer:
         self.uid = account.pw_uid
         self.gid = account.pw_gid
         self.timeout = int(os.environ.get("MOCK_CLUSTER_CLIENT_TIMEOUT", "300"))
+        self.episode_id = os.environ.get(
+            "MOCK_CLUSTER_SESSION_ID", "session"
+        )[:200]
 
     def demote(self) -> None:
         os.setgroups([self.gid])
@@ -276,7 +279,7 @@ class Observer:
             return self.response(126, b"", b"invalid Slurm arguments\n")
 
         started = time.time()
-        episode_id = str(request.get("episode_id") or "unscoped")[:200]
+        episode_id = self.episode_id
         environment = safe_environment(request.get("env"))
         job_id = environment.get("SLURM_JOB_ID", "") if command == "srun" else ""
         async with self.state_lock:

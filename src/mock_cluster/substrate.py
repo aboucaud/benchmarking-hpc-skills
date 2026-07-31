@@ -64,6 +64,7 @@ class DockerSlurmSubstrate:
         project: str | None = None,
         auth_mode: str = "gateway",
         model: str = "gpt-5.6-terra",
+        session_id: str = "session",
         build: bool = True,
         keep: bool = False,
         startup_timeout: int = 300,
@@ -76,8 +77,13 @@ class DockerSlurmSubstrate:
             raise ValueError("auth_mode must be gateway or device")
         if not MODEL.fullmatch(model):
             raise ValueError(f"invalid model slug: {model!r}")
+        if not session_id or len(session_id) > 200 or any(
+            character in session_id for character in "\x00\r\n"
+        ):
+            raise ValueError("session_id must be 1-200 characters without line breaks")
         self.auth_mode = auth_mode
         self.model = model
+        self.session_id = session_id
         self.build_images = build
         self.keep = keep
         self.startup_timeout = startup_timeout
@@ -101,6 +107,7 @@ class DockerSlurmSubstrate:
             "MOCK_SLURM_CLIENT_IMAGE": "mock-slurm-client:25-11-2-1",
             "MOCK_SLURM_SUPPORT_IMAGE": "mock-slurm-support:25-11-2-1",
             "MOCK_CODEX_AUTH_VOLUME": DEVICE_AUTH_VOLUME,
+            "MOCK_CLUSTER_SESSION_ID": session_id,
         }
 
     @property
@@ -197,6 +204,9 @@ class DockerSlurmSubstrate:
             self.ensure_device_auth_volume()
         if self.build_images:
             self.build()
+        # Mark the project as started before Compose creates anything so a
+        # partial `up` failure is still cleaned up by the caller's `finally`.
+        self.started = True
         self.compose(
             "up",
             "-d",
@@ -205,7 +215,6 @@ class DockerSlurmSubstrate:
             str(self.startup_timeout),
             timeout=self.startup_timeout + 120,
         )
-        self.started = True
         self.generate_ssh_key()
         self.install_ssh_key()
         self.wait_for_ssh()
@@ -322,10 +331,7 @@ class DockerSlurmSubstrate:
         timeout: int = 60,
         check: bool = True,
     ) -> CommandResult:
-        env = {
-            "HPCBENCH_EPISODE": "harness",
-            **(environment or {}),
-        }
+        env = environment or {}
         assignments = [f"{key}={shlex.quote(value)}" for key, value in env.items()]
         remote = " ".join(
             [
@@ -453,11 +459,11 @@ with tarfile.open(fileobj=sys.stdout.buffer,mode='w|') as archive:
             self.exec("login", ["python3", "-c", code])
             return
         config = f"""model = "{self.model}"
-model_provider = "benchmark_gateway"
+model_provider = "site_gateway"
 project_root_markers = []
 
-[model_providers.benchmark_gateway]
-name = "credential-isolating benchmark gateway"
+[model_providers.site_gateway]
+name = "site credential gateway"
 base_url = "http://credential-gateway:8080/v1"
 wire_api = "responses"
 supports_websockets = false
@@ -467,7 +473,7 @@ stream_idle_timeout_ms = 300000
 """
         code = (
             "import os,pathlib,sys;"
-            "p=pathlib.Path('/run/mock-codex');p.mkdir(parents=True,exist_ok=True);"
+            "p=pathlib.Path('/run/site-codex');p.mkdir(parents=True,exist_ok=True);"
             "p.chmod(0o700);os.chown(p,5001,5001);"
             "c=p/'config.toml';c.write_bytes(sys.stdin.buffer.read());"
             "c.chmod(0o600);os.chown(c,5001,5001)"
@@ -694,4 +700,20 @@ stream_idle_timeout_ms = 300000
                     raise SubstrateError(
                         f"Codex device credentials are exposed to {service}"
                     )
+        expected_limits = {
+            "login": (1_000_000_000, 2 * 1024**3),
+            "c1": (2_000_000_000, 4 * 1024**3),
+            "c2": (2_000_000_000, 4 * 1024**3),
+            "c3": (2_000_000_000, 4 * 1024**3),
+        }
+        for service, (nano_cpus, memory) in expected_limits.items():
+            observed = resources[service]
+            if (
+                observed["nano_cpus"] != nano_cpus
+                or observed["memory"] != memory
+            ):
+                raise SubstrateError(
+                    f"physical limits for {service} are {observed}, expected "
+                    f"{nano_cpus} NanoCPUs and {memory} bytes"
+                )
         return {"login_mounts": mounts, "resources": resources}

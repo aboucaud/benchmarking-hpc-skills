@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-modules_file=/etc/mock-slurm/modules.txt
+modules_file=/etc/site-software/modules.txt
 action="${1:-list}"
 shift || true
 

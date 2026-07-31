@@ -13,8 +13,6 @@ services:
         BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
     environment:
       CODEX_MODEL: ${CODEX_MODEL:-gpt-5.6-terra}
-      MOCK_CLUSTER_OBSERVER_HOST: observer
-      MOCK_CLUSTER_OBSERVER_PORT: "9473"
     depends_on:
       slurmctld:
         condition: service_healthy
@@ -30,9 +28,6 @@ services:
       dockerfile: Dockerfile.client
       args:
         BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
-    environment:
-      MOCK_CLUSTER_OBSERVER_HOST: observer
-      MOCK_CLUSTER_OBSERVER_PORT: "9473"
     depends_on:
       slurmctld:
         condition: service_healthy
@@ -48,9 +43,6 @@ services:
       dockerfile: Dockerfile.client
       args:
         BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
-    environment:
-      MOCK_CLUSTER_OBSERVER_HOST: observer
-      MOCK_CLUSTER_OBSERVER_PORT: "9473"
     depends_on:
       slurmctld:
         condition: service_healthy
@@ -66,9 +58,6 @@ services:
       dockerfile: Dockerfile.client
       args:
         BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
-    environment:
-      MOCK_CLUSTER_OBSERVER_HOST: observer
-      MOCK_CLUSTER_OBSERVER_PORT: "9473"
     depends_on:
       slurmctld:
         condition: service_healthy
@@ -94,6 +83,7 @@ services:
       MOCK_CLUSTER_SRUN_LIMIT: "4"
       MOCK_CLUSTER_FORWARD_CONCURRENCY: "32"
       MOCK_CLUSTER_CLIENT_TIMEOUT: "300"
+      MOCK_CLUSTER_SESSION_ID: ${MOCK_CLUSTER_SESSION_ID:-session}
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
