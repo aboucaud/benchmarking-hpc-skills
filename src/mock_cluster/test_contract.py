@@ -116,12 +116,18 @@ def test_real_docker_limits_remain_laptop_sized():
 
 def test_agent_visible_slurm_resources_are_production_shaped():
     config = (BASE_COMPOSE.parent / "slurm.conf").read_text()
+    base = yaml.safe_load(BASE_COMPOSE.read_text())
     instructions = (
         BASE_COMPOSE.parent.parent / "agents" / "INSTRUCTIONS.md"
     ).read_text()
 
-    assert "NodeName=c[1-2] CPUs=128 RealMemory=256000" in config
-    assert "NodeName=c3 CPUs=64 RealMemory=512000" in config
+    assert "NodeName=scc-c[0001-0002] CPUs=128 RealMemory=256000" in config
+    assert "NodeName=scc-c[0003-0400] CPUs=128 RealMemory=256000 State=CLOUD" in config
+    assert "NodeName=scc-g001 CPUs=64 RealMemory=512000" in config
+    assert "NodeName=scc-g[002-040] CPUs=64 RealMemory=512000 State=CLOUD" in config
+    assert base["services"]["c1"]["hostname"] == "scc-c0001"
+    assert base["services"]["c2"]["hostname"] == "scc-c0002"
+    assert base["services"]["c3"]["hostname"] == "scc-g001"
     assert "Two nodes named `scc-login[1-2]`" in instructions
     assert "400 nodes named `scc-c[0001-0400]`" in instructions
     assert "128 cores, and 256 GB memory" in instructions
@@ -139,6 +145,7 @@ def test_client_image_replaces_every_monitored_slurm_path():
     for command in ("sbatch", "squeue", "sacct", "scontrol", "scancel", "srun"):
         assert command in dockerfile
     assert "site-slurm-client" in dockerfile
+    assert "site-process-monitor" in dockerfile
     assert "mock-cluster-slurm-client" not in dockerfile
     assert 'command = Path(sys.argv[0]).name' in proxy
     assert "OPENAI_API_KEY" not in proxy

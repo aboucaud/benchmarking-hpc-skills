@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .observer_service import (
     CircuitBreaker,
+    RequestLimiter,
     redacted_argv,
     safe_environment,
 )
@@ -42,6 +43,34 @@ def test_circuit_breaker_uses_scheduler_job_identity_not_agent_episode_label():
     assert breaker.decide("two", "10").attempt == 6
     assert breaker.decide("one", "11").attempt == 1
     assert breaker.decide("one", "").attempt is None
+
+
+def test_request_limiter_contains_queries_and_job_launches_separately():
+    limiter = RequestLimiter(query_limit=1, launch_limit=4)
+
+    query = [limiter.decide("squeue", ["squeue", "--me"], 10.0) for _ in range(3)]
+    assert [item.forward for item in query] == [True, False, False]
+    assert [item.policy for item in query] == ["controller_query_rate"] * 3
+
+    launches = [
+        limiter.decide("sbatch", ["sbatch", "job.sh"], 10.0)
+        for _ in range(5)
+    ]
+    assert [item.forward for item in launches] == [True, True, True, True, False]
+    assert [item.attempt for item in launches] == [1, 2, 3, 4, 5]
+
+
+def test_sbatch_test_only_consumes_submission_request_budget():
+    limiter = RequestLimiter(query_limit=1, launch_limit=1)
+
+    first = limiter.decide(
+        "sbatch", ["sbatch", "--test-only", "job.sh"], 10.0
+    )
+    second = limiter.decide("sbatch", ["sbatch", "job.sh"], 10.0)
+
+    assert first.forward
+    assert first.policy == "job_launch_count"
+    assert not second.forward
 
 
 def test_observer_evidence_redacts_values_and_paths():

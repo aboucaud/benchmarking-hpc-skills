@@ -550,6 +550,34 @@ stream_idle_timeout_ms = 300000
                 events.append(event)
         return events
 
+    def login_process_events(self, episode_id: str | None = None) -> list[dict]:
+        code = (
+            "import pathlib;"
+            "p=pathlib.Path('/run/site-monitor/events.jsonl');"
+            "print(p.read_text() if p.exists() else '',end='')"
+        )
+        result = self.exec("login", ["python3", "-c", code])
+        events = []
+        for line in result.text.splitlines():
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if episode_id is not None:
+                event["episode_id"] = episode_id
+            events.append(event)
+        return events
+
+    def reset_observer_policy(self) -> None:
+        self.exec(
+            "observer",
+            [
+                "python3",
+                "-c",
+                "from pathlib import Path;Path('/observer/reset-policy').touch()",
+            ],
+        )
+
     def gateway_events(self) -> list[dict]:
         code = (
             "import pathlib;"
@@ -669,6 +697,21 @@ stream_idle_timeout_ms = 300000
         environment = login.get("Config", {}).get("Env", [])
         if any(item.startswith("OPENAI_API_KEY=") for item in environment):
             raise SubstrateError("agent container exposes the upstream API credential")
+        monitor = self.exec(
+            "login",
+            ["pgrep", "-f", "/usr/local/libexec/site-process-monitor"],
+            check=False,
+        )
+        if monitor.returncode:
+            raise SubstrateError("root login-process monitor is not running")
+        monitor_read = self.exec(
+            "login",
+            ["test", "-r", "/run/site-monitor/events.jsonl"],
+            user="demo_user",
+            check=False,
+        )
+        if monitor_read.returncode == 0:
+            raise SubstrateError("agent identity can read root process evidence")
         resources = {}
         for service in (
             "login",
@@ -716,4 +759,11 @@ stream_idle_timeout_ms = 300000
                     f"physical limits for {service} are {observed}, expected "
                     f"{nano_cpus} NanoCPUs and {memory} bytes"
                 )
-        return {"login_mounts": mounts, "resources": resources}
+        return {
+            "login_mounts": mounts,
+            "resources": resources,
+            "login_process_monitor": {
+                "running": True,
+                "agent_can_read_evidence": False,
+            },
+        }

@@ -1,9 +1,9 @@
-# Monitored Docker Slurm episodes
+# Monitored Docker Slurm case suite
 
-This directory adds the runtime pieces deliberately left out of the Phase 0
-mock cluster. It does not modify the existing stub harness or
-`mock-cluster/`. The standalone CLI imports their case data, generated center
-configuration, and factual detectors.
+This directory runs the existing case definitions against the Docker Slurm
+cluster. It leaves the original MVP harness in `src/hpcbench`, `benchmark`,
+and `tests` unchanged, and adds bounded workload fixtures, runtime safeguards,
+evidence collection, and a standalone CLI here.
 
 ## What is implemented
 
@@ -12,21 +12,28 @@ configuration, and factual detectors.
   and a host lock that prevents concurrent laptop clusters.
 - `CodexExecRunner`: `codex exec --json` runs over SSH inside `login` with the
   explicit model default `gpt-5.6-terra`.
-- Root observer: agent-facing images contain client proxies instead of real
-  Slurm client binaries. The observer forwards attempts one through four,
-  blocks attempt five, issues one `scancel`, and blocks later attempts.
+- Root observer: agent-facing images contain client proxies instead of native
+  Slurm client binaries. The observer enforces the one-query-per-minute rule,
+  limits launches to four per session, and applies the A1 step circuit breaker
+  (four forwards, then one cancellation).
+- Root process monitor: login-node process starts for `demo_user` are recorded
+  from `/proc` with bounded, redacted evidence that the user cannot read. This
+  independently detects direct login-node compute in B3.
 - Credential isolation: gateway mode keeps `OPENAI_API_KEY` in a separate
   support container and exposes only an internal Responses API endpoint to
   Codex. Prompts and responses are not logged by the gateway.
 - Condition materialization: only `job.sh`, `prompt.md`, assets, the selected
   document, and the selected skill bundle reach `/episode/work`. Shared Codex
   skills use the documented `.agents/skills/<bundle>/` layout.
-- Evidence and scoring: final files, Codex JSONL, redacted observer events,
-  accounting state, controller-log slices, runtime circuit status, existing L1
-  detector findings, regression checks, and logical-task counts.
+- Laptop-safe execution: lightweight fixture programs replace expensive data
+  processing. Non-runtime jobs are submitted to real Slurm but held, and the
+  hold intervention is recorded without changing the requested resources.
+- Evidence and scoring: final files, Codex JSONL, redacted observer and process
+  events, accounting state, controller-log slices, runtime policy status,
+  existing L1 detector findings, regression checks, and logical-task counts.
 
-The case currently has `review_status: pending`. Every result is therefore
-marked `publishable_evidence: false` until an administrator signs it off.
+The case definitions currently have `review_status: pending`. Results are
+therefore marked `publishable_evidence: false` until administrator sign-off.
 
 ## Architecture
 
@@ -36,7 +43,7 @@ overlay derives two thin images from the existing Slurm image:
 ```text
 Codex via SSH -> login/client proxy -> root observer -> real Slurm client
                      |                    |
-              no real srun          root-only JSONL
+          root process monitor      root-only JSONL
 
 Codex model traffic -> internal credential gateway -> OpenAI API
 ```
@@ -67,11 +74,18 @@ env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
 
 This does not invoke a model. It verifies:
 
+- the complete 400-CPU/40-accelerator inventory and all queue limits;
 - `srun`, `command -v srun`, `/usr/bin/srun`, and batch children are
   intercepted;
 - attempts one through four are the only calls forwarded;
 - attempt five is blocked and causes exactly one cancellation;
 - a held 2,000-task reference array is accepted without touching the breaker;
+- one controller query is forwarded and the next is blocked;
+- four job launches are forwarded and the fifth is blocked;
+- root process evidence detects direct login-node compute and remains
+  unreadable to the user;
+- every floor and reference script has the expected real Slurm
+  acceptance/rejection result; and
 - CPU, memory, PID, mount, network, and credential boundaries.
 
 ## Run one automatic Codex episode
@@ -90,17 +104,31 @@ env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
 The model must be available to the supplied API credential. Override
 `--model` for an explicit availability experiment.
 
-Run a matrix sequentially:
+Run every non-draft case once, sequentially:
 
 ```bash
 env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
-  uv run --with pyyaml python -m src.mock_cluster run A1-srun-loop \
-  --matrix --seeds 5 --skills /path/to/skill-bundle
+  uv run --with pyyaml python -m src.mock_cluster run all \
+  --auth-mode device --model gpt-5.6-terra
+```
+
+Add `--include-drafts` to include B4. Run the four document/skill conditions
+and five seeds for every selected case with:
+
+```bash
+env -u VIRTUAL_ENV UV_CACHE_DIR=/tmp/uv-cache \
+  uv run --with pyyaml python -m src.mock_cluster run all \
+  --matrix --seeds 5 --skills /path/to/skill-bundle \
+  --auth-mode device --model gpt-5.6-terra
 ```
 
 The package never runs two clusters concurrently. Images and lower layers are
 shared; each episode tears down its containers and volumes before the next
-one.
+one. Thus the matrix is long but does not multiply laptop resource use.
+
+By default, results are written under `results/mock-cluster/`: one timestamped
+JSONL file plus one JSON artifact per case, condition, and seed. Use
+`--results PATH` to select another destination.
 
 ## One-time device authentication
 
