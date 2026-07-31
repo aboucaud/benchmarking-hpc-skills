@@ -38,12 +38,6 @@ import csv
 import sys
 from pathlib import Path
 
-import matplotlib
-
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt  # noqa: E402
-from matplotlib.patches import Rectangle  # noqa: E402
-
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from hpcbench.paths import BENCHMARK  # noqa: E402
 
@@ -71,6 +65,15 @@ def output_id(case: str) -> str:
 
 
 def draw(case: str, rows: list[dict], path: Path) -> None:
+    # Imported here, not at module scope: `output_id` is a pure string helper the test suite
+    # and the report both need, and requiring a plotting library to ask what a case's output
+    # id is would put matplotlib into CI for no reason.
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
     by_condition = {(r["doc"], r["skills"]): r for r in rows}
     family = rows[0]["family"]
 

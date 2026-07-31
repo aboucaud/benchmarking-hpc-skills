@@ -269,6 +269,13 @@ def render_index(reports_dir: Path) -> str:
         "one run of that misuse-repair benchmark. <b>These are synthetic pilot results</b> — read "
         "each report's provenance band before quoting any number from it.</p>"
         '</div><button class="theme" id="themeToggle" type="button">Theme</button></div>'
+        # The MySTRA report is a different kind of artifact from the per-run HTML reports:
+        # it renders the experiment itself — decisions, findings, per-case audit figures —
+        # with every number pulled from the records at build time. Linked here because a
+        # collaborator landing on this page would otherwise never learn it exists.
+        '<p class="lede"><a href="./astra/"><b>Browse the ASTRA report →</b></a> the '
+        "experiment as a multiverse analysis: the decision space, one audit figure per case, "
+        "and prose whose every measured value is interpolated from the episode records.</p>"
         f"{_body(reports)}"
         f'<footer>Generated from the report files in this directory. '
         f'Source: <a href="{REPO_URL}">{html.escape(REPO_URL)}</a>.</footer>'

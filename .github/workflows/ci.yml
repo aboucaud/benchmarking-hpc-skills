@@ -20,3 +20,14 @@ jobs:
       - run: uv run --with pyyaml src/hpcbench/validate_cases.py
       - run: uv run --with pyyaml src/hpcbench/render.py check
       - run: uv run --with ruff ruff check src tests
+      # The ASTRA spec is a published artifact, so it is gated like the rest. `validate`
+      # catches a decision referenced out of its scope or an option a constraint names but
+      # that no longer exists; `universe check` catches a universe pinning a selection the
+      # spec has since removed. Both fail late and quietly otherwise — a universe with a
+      # stale selection renders as a report about a run that never happened.
+      - run: uv run --with astra-tools astra validate benchmark/astra.yaml
+      - name: Check every universe against the spec
+        run: |
+          for u in benchmark/universes/*.yaml; do
+            uv run --with astra-tools astra universe check "$u" -a benchmark/astra.yaml
+          done

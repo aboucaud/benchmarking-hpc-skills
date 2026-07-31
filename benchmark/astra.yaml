@@ -189,7 +189,7 @@ outputs:
     from: scoring.primary_endpoint
 
   - id: per_case_grid
-    from: reporting.case_grid
+    from: reporting.per_case_grid
 
   - id: run_report
     from: reporting.run_report
@@ -339,7 +339,7 @@ analyses:
         from: ../scoring.judged_records
 
     outputs:
-      - id: case_grid
+      - id: per_case_grid
         type: table
         label: Per-case outcome grid
         description: |
@@ -517,11 +517,11 @@ findings:
     id: scheduler_pushback_dominates
     label: Pushback explains the results better than the document
     claim: |
-      Whether the scheduler rejected the submission explains outcomes far better than
-      whether the center document was present: episodes where something was rejected
-      3/3, episodes with no pushback 2/13. With a neutral prompt the baseline largely
-      measures whether Slurm pushes back, not whether the agent knows better. Any
-      headline must lead with this split rather than the document contrast.
+      Whether the scheduler rejected the submission explains outcomes better than whether
+      the center document was present. With a neutral prompt the baseline largely measures
+      whether Slurm pushes back, not whether the agent knows better, so any headline must
+      lead with this split rather than with the document contrast. The per-run split is in
+      the `rejected` column of `per_case_grid` rather than restated here.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
     scope: |
@@ -538,18 +538,19 @@ findings:
     id: quiet_regression_beats_static_analysis
     label: The modal C1 fix costs two orders of magnitude more than the defect
     claim: |
-      On C1 the modal repair truncates a 48-hour walltime to 24 hours with no
-      checkpointing. It is legal, accepted by the scheduler and passes static analysis,
-      and it converts a rejected submission costing zero into a full allocation that
-      produces nothing. L2 overturned five of thirty-eight L1 passes and four were this
-      same regression. A completion-only or static-only benchmark scores it a success
-      every time.
+      On C1 the modal repair truncates the walltime and resubmits with no checkpointing.
+      It is legal, accepted by the scheduler and passes static analysis, and it converts a
+      rejected submission costing zero into a full allocation that produces nothing. A
+      completion-only or static-only benchmark scores it a success every time; only the
+      assessed layer catches it, as a matched forbidden regression. How often it fired in
+      any given run is in that run's records, not in this claim.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
     scope: |
-      An earlier definitive run — 5 seeds x 9 cases x document absent/present, judged
-      L1-pass-only. NOT the run rendered on the case pages, which is the full 2x2 matrix
-      at three seeds. The mechanism is what carries over; the counts do not.
+      First quantified on an earlier definitive run — 5 seeds x 9 cases x document
+      absent/present, judged L1-pass-only — where L2 overturned 5 of 38 L1 passes and 4
+      were this same regression. NOT the run rendered on the case pages, which is the full
+      2x2 matrix at three seeds. The mechanism carries over; the counts do not.
     tags: [headline, layered-scoring]
     evidence:
       - id: definitive_run
@@ -585,6 +586,9 @@ findings:
       measures is unfair rather than strict, and only running the ceiling exposed it.
     created_at: "2026-07-29T00:00:00Z"
     derived: true
+    scope: |
+      The two scripted calibration runners over the non-draft case set. Reproduced on
+      demand and asserted in the test suite; not a model-dependent result.
     tags: [method, calibration]
     evidence:
       - id: calibration_assertions
@@ -601,6 +605,11 @@ findings:
       on the Docker substrate.
     created_at: "2026-07-30T00:00:00Z"
     derived: true
+    scope: |
+      Case A2 across all four cells at one seed, under config isolation, on the echo-stub
+      substrate. A single-seed observation, but the mechanism — zero controller calls
+      because the agent never reached a scheduler — is visible in the call log rather than
+      inferred from the rate.
     tags: [method, substrate]
     evidence:
       - id: a2_four_cell
@@ -618,6 +627,9 @@ findings:
       alternative is that every recipe grows a translation shim.
     created_at: "2026-07-31T00:00:00Z"
     derived: true
+    scope: |
+      Authoring this spec against astra-tools 0.2.11 and mystmd 1.10.1. A tooling
+      observation, not a measurement.
     tags: [astra-feedback, integration]
     evidence:
       - id: recipe_commands
@@ -636,6 +648,9 @@ findings:
       yet guide.
     created_at: "2026-07-31T00:00:00Z"
     derived: true
+    scope: |
+      Authoring this spec against astra-tools 0.2.11. A design observation about the
+      multiverse model applied to a full-factorial benchmark, not a measurement.
     tags: [astra-feedback, design]
     evidence:
       - id: condition_matrix

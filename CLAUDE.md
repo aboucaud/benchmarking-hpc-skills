@@ -20,7 +20,36 @@ CI runs these same commands, so they and the docs cannot drift:
 - `uv run --with pyyaml src/hpcbench/validate_cases.py` — case ↔ center.yaml consistency gate
 - `uv run --with pyyaml --with pytest pytest tests -q` — tests
 - `uv run --with pyyaml src/hpcbench/render.py check` — fail if `benchmark/generated/` is stale
+- `uv run --with astra-tools astra validate benchmark/astra.yaml` — the experiment spec
+- `uv run --with astra-tools astra universe check benchmark/universes/<u>.yaml -a benchmark/astra.yaml` — once per universe
 - Calibration (the end-to-end check): `src/hpcbench/harness/episode.py all --runner scripted-asis` must give **0/9** and `--runner scripted-reference` **9/9** prevented
+
+## The ASTRA / MySTRA layer
+
+`benchmark/astra.yaml` declares the *experiment* — decisions, the output DAG, findings —
+and `benchmark/*.md` renders it as a MyST report where every measured value is interpolated
+from the episode records at build time. Regenerate after a run, in this order:
+
+```
+uv run --with pyyaml     src/hpcbench/astra_results.py results/episodes-*.judged.jsonl
+uv run --with matplotlib src/hpcbench/astra_figures.py
+cd benchmark && myst build --html          # or `myst start`
+```
+
+Three rules this layer lives by, each learned the hard way:
+
+- **Never reimplement the endpoint.** `astra_results.py` imports `report.endpoint_of`.
+  Scoring with `judge.combine` instead drops unjudged L1 failures from the denominator and
+  reports ~100%. `tests/test_astra.py` pins this.
+- **`astra.yaml` declares no cluster facts.** Partitions, limits and guardrails live in
+  `center.yaml`; restating them here recreates the drift `render.py` exists to prevent.
+- **A finding never states a count.** Findings render beside live values from whichever run
+  is active, so a hard-coded number reads as describing that run. Counts belong in a metric;
+  `scope` names the run a finding came from. Both are enforced by tests.
+
+The active universe is **the first file in `benchmark/universes/` when sorted**, and MySTRA
+takes the universe id from the *file stem* — so `active_full_matrix.yaml` is named to sort
+first on purpose. Renaming it silently repoints the whole site.
 
 ## Purpose
 
