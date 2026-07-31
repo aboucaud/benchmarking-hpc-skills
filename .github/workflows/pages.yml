@@ -75,6 +75,8 @@ jobs:
           # NOT created by `myst build`: verified on a clean tree, where its absence gives 16
           # "Cannot find image" errors and a site with zero figures that still deploys green.
           ln -sfn ../results pages/results
+          # pages/cases/*.md sit one level deeper, so they need their own link.
+          ln -sfn ../../results pages/cases/results
           BASE_URL="${{ steps.pages.outputs.base_path }}/astra" myst build --html
           # Fail the deploy rather than publish a report with missing figures.
           test "$(find _build/html -name '*case_*.svg' | wc -l)" -ge 9

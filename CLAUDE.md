@@ -31,10 +31,15 @@ and `benchmark/*.md` renders it as a MyST report where every measured value is i
 from the episode records at build time. Regenerate after a run, in this order:
 
 ```
-uv run --with pyyaml     src/hpcbench/astra_results.py results/episodes-*.judged.jsonl
+uv run --with pyyaml     src/hpcbench/astra_results.py   results/episodes-*.judged.jsonl
 uv run --with matplotlib src/hpcbench/astra_figures.py
+uv run --with pyyaml     src/hpcbench/astra_case_flow.py results/episodes-*.judged.jsonl
 cd benchmark && myst build --html          # or `myst start`
 ```
+
+`benchmark/pages/cases/case-*.md` are **generated** — one "what happened" page per case,
+every count taken from the records. Edit the generator, never the pages. The hand-written
+pages (`pages/a3-no-array.md` and friends) carry the *argument* and link to them.
 
 Three rules this layer lives by, each learned the hard way:
 
@@ -50,6 +55,23 @@ Three rules this layer lives by, each learned the hard way:
 The active universe is **the first file in `benchmark/universes/` when sorted**, and MySTRA
 takes the universe id from the *file stem* — so `active_full_matrix.yaml` is named to sort
 first on purpose. Renaming it silently repoints the whole site.
+
+Three more filename/rendering traps, each of which fails quietly rather than loudly:
+
+- **MyST derives a route from the file stem and flattens directories.** A generated
+  `cases/A3-no-array.md` collides with `pages/a3-no-array.md` and becomes `/a3-no-array-1`,
+  with which page wins the bare slug depending on build order. Generated pages carry a
+  `case-` prefix for that reason.
+- **A block embed mints a project-wide identifier**, so each ASTRA output may be
+  `:::{astra}`-embedded on exactly one page. Reference it inline anywhere else.
+- **MyST resolves image paths relative to the page file**, while MySTRA emits them relative
+  to the project root — hence the gitignored `results` symlinks in `pages/` and
+  `pages/cases/`. Without them the build reports "Cannot find image" and would publish a
+  figureless site; the deploy guards against that by counting figures.
+
+Figures are saved **opaque, never transparent**. The site renders dark by default and the
+figures use dark ink, so a transparent background makes their titles and `k/n` labels
+invisible — which reads as "the numbers are missing" rather than as a styling bug.
 
 ## Purpose
 

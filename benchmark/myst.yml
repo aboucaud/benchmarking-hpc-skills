@@ -22,6 +22,17 @@ project:
     - file: pages/a3-no-array.md
     - file: pages/b3-login-node-compute.md
     - file: pages/c1-over-limit.md
+    - title: What happened, case by case
+      children:
+        - file: pages/cases/case-A1-srun-loop.md
+        - file: pages/cases/case-A2-poll-storm.md
+        - file: pages/cases/case-A3-no-array.md
+        - file: pages/cases/case-B1-small-files.md
+        - file: pages/cases/case-B2-home-output.md
+        - file: pages/cases/case-B3-login-node-compute.md
+        - file: pages/cases/case-C1-over-limit.md
+        - file: pages/cases/case-C2-over-request.md
+        - file: pages/cases/case-C3-wrong-partition.md
 site:
   template: book-theme
   title: HPC misuse-repair benchmark

@@ -128,9 +128,13 @@ def draw(case: str, rows: list[dict], path: Path) -> None:
 
     figure.subplots_adjust(left=0.17, right=0.995, top=0.97, bottom=0.03)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # Format follows the suffix: SVG for the site, PNG when someone wants a slide.
+    # Opaque, never transparent. A transparent SVG inherits the page background, and this
+    # figure's title and its k/n labels are dark ink — so on a dark theme they turn invisible
+    # and the figure reads as "the numbers are missing". The report renders dark by default,
+    # which is exactly where it was first noticed. A light card is legible under either theme,
+    # and matches the mermaid figures already in docs/figures/.
     figure.savefig(path, format=path.suffix.lstrip("."), bbox_inches="tight",
-                   transparent=path.suffix == ".svg")
+                   transparent=False, facecolor="#ffffff")
     plt.close(figure)
 
 

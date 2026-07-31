@@ -6,8 +6,8 @@ title: "A3 — twenty submissions instead of one array"
 loop where one job array would do. Nothing about the request is illegal; the scheduler
 accepts every one of them.
 
-:::{astra} reporting.outputs.case_a3_no_array
-:::
+The full record for this case — what happened across all twelve episodes, with
+the audit figure — is on [A3-no-array](cases/case-A3-no-array.md).
 
 ## The contrast
 

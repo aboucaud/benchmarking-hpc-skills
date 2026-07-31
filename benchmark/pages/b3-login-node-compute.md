@@ -6,8 +6,8 @@ title: "B3 — compute on the login node, and a detector that was wrong"
 where the agent stands, on the shared login node, instead of submitting it. Nothing is
 rejected, because nothing was ever asked of the scheduler.
 
-:::{astra} reporting.outputs.case_b3_login_node_compute
-:::
+The full record for this case — what happened across all twelve episodes, with
+the audit figure — is on [B3-login-node-compute](cases/case-B3-login-node-compute.md).
 
 ## The contrast
 
