@@ -342,7 +342,10 @@ def report(episodes: list[dict]) -> str:
     # record. An episode that cannot answer this question is left out of both strata rather than
     # counted as "no pushback", which would silently move it into the larger group.
     for label, predicate in (
-        ("scheduler rejected something", lambda e: e["evidence"].get("submissions_rejected", 0) > 0),
+        (
+            "scheduler rejected something",
+            lambda e: e["evidence"].get("submissions_rejected", 0) > 0,
+        ),
         ("no pushback", lambda e: e["evidence"].get("submissions_rejected") == 0),
     ):
         group = [

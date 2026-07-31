@@ -1334,7 +1334,8 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
             group = grid[case_id].get(label, [])
             if not group:
                 arm_rows.append(
-                    f'<tr><td>{e(condition_line(label))}<br><code class="arm-raw">{e(label)}</code></td>'
+                    f'<tr><td>{e(condition_line(label))}<br>'
+                    f'<code class="arm-raw">{e(label)}</code></td>'
                     f'<td class="num muted">not run</td><td colspan="2"></td></tr>'
                 )
                 continue
@@ -1373,7 +1374,8 @@ def cases_section(grid: dict, cases: dict[str, dict], conditions: list[str]) -> 
                     seen.add(quote)
                     quotes.append(
                         f'<blockquote class="quote">{e(quote[:600])}'
-                        f'<span class="src">{e(condition_line(label))} · seed {e(episode.get("seed"))} · '
+                        f'<span class="src">{e(condition_line(label))} · '
+                        f'seed {e(episode.get("seed"))} · '
                         f'judge verdict {e(reading.get("verdict"))} '
                         f'({e(reading.get("confidence"))} confidence)</span></blockquote>'
                     )
