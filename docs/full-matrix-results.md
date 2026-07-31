@@ -64,8 +64,9 @@ and misuse *inferred* from the script rather than executed.
 2. **The effect is concentrated exactly where theory says it should be.** The cases the document
    rescues are the ones that turn on a number only the site knows: `B1-small-files` 0/3 → 3/3,
    `C1-over-limit` 1/3 → 3/3, `C2-over-request` 0/3 → 3/3, `A3-no-array` 0/3 → 3/3. The cases it
-   does not move are the ones where Slurm itself rejects the job (`C3` 3/3 in all four arms —
-   still not discriminating, as the pilot found) or where general good practice suffices.
+   does not move are the ones where general good practice suffices, or — on **this substrate** —
+   where the echo stub hands the agent the answer (`C3` 3/3 in all four arms; see the retraction
+   below, which is about the stub and not about the case).
 
 3. **Reading the document substitutes for interrogating the scheduler.** Mean peak controller
    queries per minute: 1.9 without the document, **1.1** with it. An agent that has been told the
@@ -157,5 +158,19 @@ Unchanged from the pilot, and worth restating because the numbers above are quot
    story reads as positive or negative. Owner: needs a sysadmin, not a vote.
 2. **Judging cost** — at $1.96/judged episode, a 5-seed matrix is ~$210 of judge. Either accept
    it, sample L2, or use a cheaper judge and re-anchor the pilot.
-3. **Retire `C3-wrong-partition`?** 3/3 in all four arms across two runs. It costs episodes and
-   discriminates nothing.
+3. ~~**Retire `C3-wrong-partition`?** 3/3 in all four arms across two runs. It costs episodes and
+   discriminates nothing.~~
+
+   **Retracted 2026-07-31.** [#28](https://github.com/aboucaud/benchmarking-hpc-skills/pull/28)
+   ran the same case against a real Slurm controller and got **0/5 doc-absent, 5/5 doc-present** —
+   one of the sharpest separations in that run. C3 discriminates fine; the *echo stub* does not.
+
+   Which makes the retraction more useful than the proposal was. Two runs agreeing that a case is
+   flat is not evidence the case is flat, if both runs share the substrate that flattens it — and
+   C3 is the case whose whole content is "the scheduler rejects this at submission", which is
+   exactly the behaviour an echo shim cannot reproduce. The same doubt applies to the rest of the
+   C family, all of which turn on submission-time rejection, and it is a reason to prefer the
+   Docker substrate for family C rather than a reason to cut cases from either.
+
+   Standing correction to `first-run-results.md` finding 2 as well, which called C3
+   non-discriminating on the same stub-only basis.
