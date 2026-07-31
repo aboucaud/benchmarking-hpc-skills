@@ -138,13 +138,21 @@ def test_no_external_resource_references(tmp_path):
     _write_report(tmp_path, "run.html", "Run")
 
     page = report_index.render_index(tmp_path)
+    # `xmlns="http://www.w3.org/2000/svg"` is an XML namespace name, never fetched. Drop it before
+    # checking, so the check below stays a literal "no plaintext URLs" rule.
+    page_without_namespaces = page.replace('xmlns="http://www.w3.org/2000/svg"', "")
 
     assert "<script src" not in page
     assert "<link " not in page
     assert "@import" not in page
-    assert "http://" not in page
-    # The only absolute URL allowed is the source-repo link in the footer.
-    assert page.count("https://") == page.count(report_index.REPO_URL)
+    assert "http://" not in page_without_namespaces
+    # Every absolute URL is an outbound link to a declared destination — never a fetched
+    # resource. An undeclared host is how a self-contained page starts depending on a CDN.
+    for url in re.findall(r'href="(https://[^"]+)"', page):
+        assert url.startswith(report_index.EXTERNAL_LINK_PREFIXES), f"undeclared link: {url}"
+    # Nothing outside an href may carry a URL either, except the repo URL shown as link text.
+    remainder = re.sub(r'href="https://[^"]+"', "", page).replace(report_index.REPO_URL, "")
+    assert "https://" not in remainder
 
 
 def test_write_command_creates_output(tmp_path):
