@@ -24,9 +24,43 @@ chown -R slurm:slurm \
 chmod 0600 /etc/slurm/slurmdbd.conf
 
 start_munge() {
-    if [ ! -S /run/munge/munge.socket.2 ]; then
-        gosu munge /usr/sbin/munged
+    if ! pgrep -x munged >/dev/null 2>&1; then
+        rm -f /run/munge/munge.socket.2
+        runuser -u munge -- /usr/sbin/munged
     fi
+}
+
+prepare_benchmark_dirs() {
+    mkdir -p \
+        /archive/demo_user \
+        /episode/work \
+        /scratch/demo_user/classifier \
+        /scratch/demo_user/cutouts \
+        /scratch/demo_user/lightcurve-fit \
+        /scratch/demo_user/mhd \
+        /scratch/demo_user/nbody \
+        /scratch/demo_user/photoz \
+        /scratch/demo_user/rv-sweep
+    chown -R demo_user:demo_user \
+        /archive/demo_user \
+        /episode \
+        /scratch/demo_user
+}
+
+prepare_codex_config() {
+    local model="${CODEX_MODEL:-gpt-5.6-terra}"
+
+    case "${model}" in
+        *[!A-Za-z0-9._-]*)
+            echo "Invalid CODEX_MODEL value: ${model}" >&2
+            exit 1
+            ;;
+    esac
+
+    install -d -o demo_user -g demo_user -m 0700 /home/demo_user/.codex
+    printf 'model = "%s"\n' "${model}" > /home/demo_user/.codex/config.toml
+    chown demo_user:demo_user /home/demo_user/.codex/config.toml
+    chmod 0600 /home/demo_user/.codex/config.toml
 }
 
 wait_for_port() {
@@ -46,7 +80,7 @@ accounting_row_exists() {
     shift 2
 
     sacctmgr --noheader --parsable2 show "${entity}" "$@" \
-        | grep -Fqx "${expected}|"
+        | grep -Fqx "${expected}"
 }
 
 case "${1:-}" in
@@ -60,15 +94,16 @@ case "${1:-}" in
             --execute="SELECT 1" >/dev/null 2>&1; do
             sleep 2
         done
-        exec gosu slurm /usr/sbin/slurmdbd -Dvv
+        exec runuser -u slurm -- /usr/sbin/slurmdbd -Dvv
         ;;
 
     register-cluster)
         start_munge
         wait_for_port slurmdbd 6819 "slurmdbd"
 
-        cluster_name="${CLUSTER_NAME:-linux}"
-        account_name="${ACCOUNT_NAME:-local}"
+        cluster_name="${CLUSTER_NAME:-scc}"
+        account_name="${ACCOUNT_NAME:-proj_astro}"
+        benchmark_user="${BENCHMARK_USER:-demo_user}"
 
         if accounting_row_exists cluster "${cluster_name}" format=Cluster; then
             echo "Slurm cluster ${cluster_name} is already registered."
@@ -77,19 +112,20 @@ case "${1:-}" in
         fi
 
         if ! accounting_row_exists account "${account_name}" \
-            where "name=${account_name}" "cluster=${cluster_name}" format=Account; then
+            where "name=${account_name}" format=Account; then
             sacctmgr --immediate add account \
                 name="${account_name}" \
                 cluster="${cluster_name}" \
-                description="Local testing" \
-                organization=local
+                description="Astronomy project allocation" \
+                organization=research
         fi
 
-        if ! accounting_row_exists user submitter \
-            where name=submitter "account=${account_name}" \
-            "cluster=${cluster_name}" format=User; then
+        if ! accounting_row_exists association \
+            "${benchmark_user}|${account_name}|${cluster_name}" \
+            where "user=${benchmark_user}" "account=${account_name}" \
+            "cluster=${cluster_name}" format=User,Account,Cluster; then
             sacctmgr --immediate add user \
-                name=submitter \
+                name="${benchmark_user}" \
                 account="${account_name}" \
                 cluster="${cluster_name}"
         fi
@@ -98,17 +134,20 @@ case "${1:-}" in
     slurmctld)
         start_munge
         wait_for_port slurmdbd 6819 "slurmdbd"
-        exec gosu slurm /usr/sbin/slurmctld -Dvv
+        exec runuser -u slurm -- /usr/sbin/slurmctld -Dvv
         ;;
 
     login)
         start_munge
+        prepare_benchmark_dirs
+        prepare_codex_config
         wait_for_port slurmctld 6817 "slurmctld"
         exec /usr/sbin/sshd -D -e
         ;;
 
     slurmd)
         start_munge
+        prepare_benchmark_dirs
         wait_for_port slurmctld 6817 "slurmctld"
         exec /usr/sbin/slurmd -Dvv
         ;;

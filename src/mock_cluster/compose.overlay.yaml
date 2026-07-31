@@ -1,0 +1,183 @@
+services:
+  slurmctld:
+    networks:
+      - default
+      - benchmark_internal
+
+  login:
+    image: ${MOCK_SLURM_CLIENT_IMAGE:-mock-slurm-client:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.client
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    environment:
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.6-terra}
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+      observer:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+
+  c1:
+    image: ${MOCK_SLURM_CLIENT_IMAGE:-mock-slurm-client:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.client
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+      observer:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+
+  c2:
+    image: ${MOCK_SLURM_CLIENT_IMAGE:-mock-slurm-client:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.client
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+      observer:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+
+  c3:
+    image: ${MOCK_SLURM_CLIENT_IMAGE:-mock-slurm-client:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.client
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+      observer:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+
+  observer:
+    image: ${MOCK_SLURM_SUPPORT_IMAGE:-mock-slurm-support:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.support
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    command: ["mock-cluster-support", "observer"]
+    hostname: observer
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
+    environment:
+      MOCK_CLUSTER_EVIDENCE: /observer/events.jsonl
+      MOCK_CLUSTER_SRUN_LIMIT: "4"
+      MOCK_CLUSTER_FORWARD_CONCURRENCY: "32"
+      MOCK_CLUSTER_CLIENT_TIMEOUT: "300"
+      MOCK_CLUSTER_SESSION_ID: ${MOCK_CLUSTER_SESSION_ID:-session}
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_data:/data
+      - home_dirs:/home
+      - scratch_dirs:/scratch
+      - archive_dirs:/archive
+      - episode_work:/episode/work
+      - observer_evidence:/observer
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+    healthcheck:
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import json,socket; s=socket.create_connection(('127.0.0.1',9473),1); s.sendall(b'{\\\"kind\\\":\\\"health\\\"}\\n'); assert json.loads(s.makefile('r').readline())['exit_code']==0\"",
+        ]
+
+  credential-gateway:
+    image: ${MOCK_SLURM_SUPPORT_IMAGE:-mock-slurm-support:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.support
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    command: ["mock-cluster-support", "gateway"]
+    hostname: credential-gateway
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 64
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MOCK_CLUSTER_GATEWAY_EVIDENCE: /observer/gateway-events.jsonl
+      MOCK_CLUSTER_GATEWAY_MAX_REQUESTS: ${MOCK_CLUSTER_GATEWAY_MAX_REQUESTS:-200}
+    volumes:
+      - observer_evidence:/observer
+    networks:
+      - benchmark_internal
+      - gateway_egress
+    healthcheck:
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import urllib.request; assert urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=1).status==200\"",
+        ]
+
+  ssh-gateway:
+    image: ${MOCK_SLURM_SUPPORT_IMAGE:-mock-slurm-support:25-11-2-1}
+    build:
+      context: ../src/mock_cluster
+      dockerfile: Dockerfile.support
+      args:
+        BASE_IMAGE: ${MOCK_SLURM_IMAGE:-mock-slurm-cluster:25-11-2-1}
+    command: ["mock-cluster-support", "ssh-forwarder"]
+    hostname: ssh-gateway
+    cpus: 0.10
+    mem_limit: 128m
+    pids_limit: 32
+    environment:
+      MOCK_CLUSTER_SSH_UPSTREAM: login
+    ports:
+      - "127.0.0.1:${MOCK_CLUSTER_SSH_PORT:-2223}:2222"
+    depends_on:
+      login:
+        condition: service_healthy
+    networks:
+      - benchmark_internal
+      - gateway_egress
+    healthcheck:
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 2s
+      test:
+        [
+          "CMD-SHELL",
+          "python3 -c \"import socket; s=socket.create_connection(('127.0.0.1',2222),1); assert s.recv(4)==b'SSH-'\"",
+        ]
+
+volumes:
+  observer_evidence:
+
+networks:
+  benchmark_internal:
+    internal: true
+  gateway_egress:

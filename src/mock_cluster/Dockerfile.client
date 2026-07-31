@@ -1,0 +1,15 @@
+ARG BASE_IMAGE=mock-slurm-cluster:25-11-2-1
+FROM ${BASE_IMAGE}
+
+COPY client_proxy.py /usr/local/libexec/site-slurm-client
+
+RUN set -eux \
+    && chmod 0755 /usr/local/libexec/site-slurm-client \
+    && rm -f /usr/local/bin/codex-benchmark \
+    && sed -i '/EPISODE_WORK/d' /home/demo_user/.bashrc \
+    && for command in \
+        sacct sacctmgr salloc sbatch scancel scontrol sdiag sinfo sprio \
+        squeue sreport srun sshare sstat; do \
+        test -x "/usr/bin/${command}"; \
+        ln -sfn /usr/local/libexec/site-slurm-client "/usr/bin/${command}"; \
+    done

@@ -4,6 +4,10 @@ if [ -f /etc/bashrc ]; then
 fi
 
 export DATA=/data
+export SCRATCH=/scratch/demo_user
+export ARCHIVE=/archive/demo_user
+export EPISODE_WORK=/episode/work
+export CODEX_MODEL="${CODEX_MODEL:-gpt-5.6-terra}"
 
 # Slurm's completion script assumes an interactive shell.
 if [[ $- == *i* ]] && [ -d /etc/profile.d ]; then

@@ -4,6 +4,8 @@ x-slurm-image: &slurm-image
     context: .
     args:
       SLURM_TAG: ${SLURM_TAG:-slurm-25-11-2-1}
+      CODEX_VERSION: ${CODEX_VERSION:-0.146.0}
+      BUILD_JOBS: ${BUILD_JOBS:-2}
 
 x-slurm-healthcheck: &slurm-healthcheck
   interval: 5s
@@ -15,6 +17,9 @@ services:
   mysql:
     image: mariadb:12
     hostname: mysql
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     environment:
       MARIADB_RANDOM_ROOT_PASSWORD: "yes"
       MARIADB_DATABASE: slurm_acct_db
@@ -34,6 +39,9 @@ services:
     <<: *slurm-image
     command: ["slurmdbd"]
     hostname: slurmdbd
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 128
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
@@ -52,6 +60,13 @@ services:
   cluster-init:
     <<: *slurm-image
     command: ["register-cluster"]
+    cpus: 0.25
+    mem_limit: 256m
+    pids_limit: 64
+    environment:
+      CLUSTER_NAME: scc
+      ACCOUNT_NAME: proj_astro
+      BENCHMARK_USER: demo_user
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
@@ -66,6 +81,7 @@ services:
     hostname: slurmctld
     cpus: 1.0
     mem_limit: 1g
+    pids_limit: 128
     shm_size: 512mb
     volumes:
       - munge_config:/etc/munge
@@ -90,12 +106,18 @@ services:
     hostname: login
     cpus: 1.0
     mem_limit: 2g
+    pids_limit: 256
     shm_size: 512mb
+    environment:
+      CODEX_MODEL: ${CODEX_MODEL:-gpt-5.6-terra}
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
       - slurm_data:/data
       - home_dirs:/home
+      - scratch_dirs:/scratch
+      - archive_dirs:/archive
+      - episode_work:/episode/work
     ports:
       - "127.0.0.1:${SSH_PORT:-2223}:22"
     depends_on:
@@ -117,13 +139,37 @@ services:
     privileged: true
     cpus: 2.0
     mem_limit: 4g
+    pids_limit: 256
     shm_size: 1gb
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
       - slurm_logs:/var/log/slurm
-      - slurm_data:/data
-      - home_dirs:/home
+      - type: volume
+        source: slurm_data
+        target: /data
+        volume:
+          nocopy: true
+      - type: volume
+        source: home_dirs
+        target: /home
+        volume:
+          nocopy: true
+      - type: volume
+        source: scratch_dirs
+        target: /scratch
+        volume:
+          nocopy: true
+      - type: volume
+        source: archive_dirs
+        target: /archive
+        volume:
+          nocopy: true
+      - type: volume
+        source: episode_work
+        target: /episode/work
+        volume:
+          nocopy: true
       - c1_state:/var/lib/slurmd
     depends_on:
       slurmctld:
@@ -144,13 +190,37 @@ services:
     privileged: true
     cpus: 2.0
     mem_limit: 4g
+    pids_limit: 256
     shm_size: 1gb
     volumes:
       - munge_config:/etc/munge
       - slurm_config:/etc/slurm
       - slurm_logs:/var/log/slurm
-      - slurm_data:/data
-      - home_dirs:/home
+      - type: volume
+        source: slurm_data
+        target: /data
+        volume:
+          nocopy: true
+      - type: volume
+        source: home_dirs
+        target: /home
+        volume:
+          nocopy: true
+      - type: volume
+        source: scratch_dirs
+        target: /scratch
+        volume:
+          nocopy: true
+      - type: volume
+        source: archive_dirs
+        target: /archive
+        volume:
+          nocopy: true
+      - type: volume
+        source: episode_work
+        target: /episode/work
+        volume:
+          nocopy: true
       - c2_state:/var/lib/slurmd
     depends_on:
       slurmctld:
@@ -164,6 +234,57 @@ services:
           "scontrol show node c2 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
         ]
 
+  c3:
+    <<: *slurm-image
+    command: ["slurmd"]
+    hostname: c3
+    privileged: true
+    cpus: 2.0
+    mem_limit: 4g
+    pids_limit: 256
+    shm_size: 1gb
+    volumes:
+      - munge_config:/etc/munge
+      - slurm_config:/etc/slurm
+      - slurm_logs:/var/log/slurm
+      - type: volume
+        source: slurm_data
+        target: /data
+        volume:
+          nocopy: true
+      - type: volume
+        source: home_dirs
+        target: /home
+        volume:
+          nocopy: true
+      - type: volume
+        source: scratch_dirs
+        target: /scratch
+        volume:
+          nocopy: true
+      - type: volume
+        source: archive_dirs
+        target: /archive
+        volume:
+          nocopy: true
+      - type: volume
+        source: episode_work
+        target: /episode/work
+        volume:
+          nocopy: true
+      - c3_state:/var/lib/slurmd
+    depends_on:
+      slurmctld:
+        condition: service_healthy
+    healthcheck:
+      <<: *slurm-healthcheck
+      start_period: 15s
+      test:
+        [
+          "CMD-SHELL",
+          "scontrol show node c3 | grep -Eq 'State=(IDLE|ALLOCATED|MIXED)'",
+        ]
+
 volumes:
   mysql_data:
   munge_config:
@@ -171,6 +292,10 @@ volumes:
   slurm_logs:
   slurm_data:
   home_dirs:
+  scratch_dirs:
+  archive_dirs:
+  episode_work:
   controller_state:
   c1_state:
   c2_state:
+  c3_state:

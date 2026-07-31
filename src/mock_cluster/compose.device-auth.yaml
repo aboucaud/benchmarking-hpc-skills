@@ -1,0 +1,16 @@
+services:
+  login:
+    networks:
+      - benchmark_internal
+      - gateway_egress
+    volumes:
+      - type: volume
+        source: codex_device_auth
+        target: /home/demo_user/.codex
+        volume:
+          nocopy: true
+
+volumes:
+  codex_device_auth:
+    external: true
+    name: ${MOCK_CODEX_AUTH_VOLUME:-benchmarking-hpc-codex-device-auth}
