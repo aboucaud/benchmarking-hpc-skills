@@ -74,6 +74,8 @@ def test_root_process_evidence_corroborates_login_node_compute():
                 "event": "process_start",
                 "source": "login_process",
                 "command": "python3 preprocess.py",
+                "execution_evidence": "argv",
+                "invoked_scripts": ["preprocess.py"],
                 "ts": 1.0,
             }
         ],

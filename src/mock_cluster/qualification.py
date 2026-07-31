@@ -12,8 +12,15 @@ import yaml
 
 from hpcbench.harness import detect
 
-from .episode import CASES, GENERATED, Condition, materialize_condition
+from .episode import (
+    CASES,
+    GENERATED,
+    Condition,
+    events_for_episode,
+    materialize_condition,
+)
 from .fixtures import agent_fixture_files, qualification_fixture_files
+from .score import detector_records
 from .substrate import DockerSlurmSubstrate, SubstrateError
 
 FLOOR = b"""#!/bin/bash
@@ -150,6 +157,33 @@ def static_calibration() -> dict[str, Any]:
     return report
 
 
+def no_agent_controller_floor(
+    events: list[dict],
+    episode_id: str,
+    limits: dict,
+) -> dict[str, Any]:
+    """Assert infrastructure activity contributes zero episode-scoped queries."""
+    scoped = events_for_episode(events, episode_id)
+    finding = detect.controller_rate(
+        detector_records(scoped, []),
+        {},
+        {"detectors": limits},
+    )
+    peak = int(finding.details.get("peak_queries_per_minute", 0))
+    if peak != 0:
+        raise SubstrateError(
+            f"no-agent controller floor is {peak} queries/min, expected zero"
+        )
+    raw_client_events = [
+        event for event in events if event.get("event") == "slurm_client"
+    ]
+    return {
+        "peak_queries_per_minute": peak,
+        "episode_events": len(scoped),
+        "infrastructure_events_excluded": len(raw_client_events) - len(scoped),
+    }
+
+
 def scheduler_case_matrix(substrate: DockerSlurmSubstrate) -> dict[str, Any]:
     report: dict[str, Any] = {}
     for case_dir in sorted(CASES.iterdir()):
@@ -239,6 +273,12 @@ def qualify(*, build: bool = True) -> dict[str, Any]:
     }
     try:
         substrate.start()
+        limits = json.loads((GENERATED / "detectors.json").read_text())
+        report["no_agent_controller_floor"] = no_agent_controller_floor(
+            substrate.observer_events(),
+            qualification_id,
+            limits,
+        )
         report["security"] = substrate.security_preflight()
         report["agent_visible_resources"] = agent_visible_resources(substrate)
 

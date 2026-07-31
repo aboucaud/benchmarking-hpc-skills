@@ -7,7 +7,6 @@ import datetime as dt
 import hashlib
 import json
 import os
-import re
 import time
 from pathlib import Path
 
@@ -15,7 +14,39 @@ TARGET_UID = int(os.environ.get("SITE_MONITOR_UID", "5001"))
 OUTPUT = Path(os.environ.get("SITE_MONITOR_OUTPUT", "/run/site-monitor/events.jsonl"))
 INTERVAL = float(os.environ.get("SITE_MONITOR_INTERVAL", "0.05"))
 MAX_EVENTS = int(os.environ.get("SITE_MONITOR_MAX_EVENTS", "5000"))
-SCRIPT = re.compile(r"(?:^|[\s\"'])([^/\s\"']+\.(?:py|sh))(?:$|[\s\"'])")
+SHELLS = {"bash", "dash", "sh", "zsh"}
+
+
+def invoked_scripts(arguments: list[str]) -> list[str]:
+    """Return scripts invoked by argv, never filenames embedded in command strings."""
+    if not arguments:
+        return []
+    executable = Path(arguments[0]).name
+    if executable.endswith((".py", ".sh")):
+        return [executable]
+
+    remaining = arguments[1:]
+    if executable in SHELLS:
+        for argument in remaining:
+            if argument.startswith("-") and "c" in argument[1:]:
+                return []
+            if argument.startswith("-"):
+                continue
+            return (
+                [Path(argument).name]
+                if argument.endswith((".py", ".sh"))
+                else []
+            )
+        return []
+
+    if executable.startswith("python") or executable in {"pypy", "pypy3"}:
+        for argument in remaining:
+            if argument in {"-c", "-m"}:
+                return []
+            if argument.startswith("-"):
+                continue
+            return [Path(argument).name] if argument.endswith(".py") else []
+    return []
 
 
 def process_uid(pid: str) -> int | None:
@@ -64,12 +95,7 @@ def process_summary(pid: str) -> dict | None:
     # redacted basename and avoids broadening container privileges.
     executable = Path(arguments[0]).name
 
-    scripts: list[str] = []
-    for argument in arguments[1:]:
-        if argument.endswith((".py", ".sh")):
-            scripts.append(Path(argument).name)
-        scripts.extend(Path(item).name for item in SCRIPT.findall(argument))
-    scripts = list(dict.fromkeys(scripts))[:4]
+    scripts = invoked_scripts(arguments)[:4]
     command = " ".join([executable, *scripts]).strip()
     now = time.time()
     return {
@@ -80,6 +106,8 @@ def process_summary(pid: str) -> dict | None:
         "ppid": parent,
         "executable": executable,
         "scripts": scripts,
+        "invoked_scripts": scripts,
+        "execution_evidence": "argv",
         "command": command,
         "ts": now,
         "iso": dt.datetime.now(dt.timezone.utc).isoformat(),  # noqa: UP017

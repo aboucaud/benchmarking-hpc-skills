@@ -80,6 +80,8 @@ This does not invoke a model. It verifies:
 - attempts one through four are the only calls forwarded;
 - attempt five is blocked and causes exactly one cancellation;
 - a held 2,000-task reference array is accepted without touching the breaker;
+- the episode-scoped no-agent controller-query floor is exactly zero even
+  while infrastructure healthchecks remain in the raw audit log;
 - one controller query is forwarded and the next is blocked;
 - four job launches are forwarded and the fifth is blocked;
 - root process evidence detects direct login-node compute and remains

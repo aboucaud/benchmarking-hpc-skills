@@ -13,7 +13,7 @@ from typing import Any
 import yaml
 
 from .episode import CASES, GENERATED, events_for_episode
-from .score import score_episode
+from .score import DOCKER_L1_SCORING_VERSION, score_episode
 
 
 def rescore_record(record: dict[str, Any]) -> dict[str, Any]:
@@ -40,13 +40,15 @@ def rescore_record(record: dict[str, Any]) -> dict[str, Any]:
     updated.setdefault(
         "score_correction",
         {
-            "kind": "observer_episode_id_scope",
+            "kind": "docker_l1_rescore",
             "reason": (
-                "the original L1 score included proxy-visible infrastructure "
-                "healthchecks from other episode IDs"
+                "recomputed with episode-scoped observer events, executed-plus-"
+                "submitted static targets, and execution-aware login-process "
+                "attribution"
             ),
             "previous_l1": copy.deepcopy(updated.get("l1")),
             "raw_observer_evidence_preserved": True,
+            "scoring_version": DOCKER_L1_SCORING_VERSION,
         },
     )
     updated["l1"] = score_episode(
@@ -56,6 +58,7 @@ def rescore_record(record: dict[str, Any]) -> dict[str, Any]:
         files=final_files,
         events=scored_events,
         commands=updated.get("agent", {}).get("commands", []),
+        processes=evidence.get("login_processes", []),
     )
     evidence["workload_submitted"] = updated["l1"]["workload_submitted"]
     evidence["scored_observer_event_count"] = len(scored_events)
