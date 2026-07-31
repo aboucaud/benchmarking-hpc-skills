@@ -12,6 +12,7 @@ What each document is, its status, and the order to read them in. Code and case 
 | [`first-run-results.md`](first-run-results.md) | The **results home**: what the live runs showed, what they do and don't support, and the decisions they put in front of the team. All run findings belong here, not in the design doc. |
 | [`docker-slurm-real-and-agent-visible-config.md`](docker-slurm-real-and-agent-visible-config.md) | Operator reference for the physical Docker limits and the production-shaped Slurm resources exposed to agents. |
 | [`docker-slurm-all-cases.md`](docker-slurm-all-cases.md) | Coverage and laptop-safety behavior for running every case against real Docker Slurm services. |
+| [`docker-slurm-document-ablation-report.md`](docker-slurm-document-ablation-report.md) | Pilot report for the 90-episode Docker Slurm document-absent versus document-present matrix. |
 
 Reading order: `prd.md` → `mvp-misuse-benchmark.md` → `first-run-results.md`.
 
