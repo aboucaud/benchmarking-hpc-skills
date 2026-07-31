@@ -762,7 +762,22 @@ def main() -> int:
     parser.add_argument("--condition", default=None, choices=CONDITION_LABELS,
                         help="run one named cell instead of the default doc-absent/skills-none; "
                              "passing --skills alone does not select the skills arm")
-    parser.add_argument("--seeds", type=int, default=1)
+    # Three, not one, and not the five the pilot used. A single seed cannot tell a result from a
+    # coin flip, so one was never a defensible default for a real run.
+    #
+    # The choice of three over five is a deliberate trade, and it costs something. `docs/
+    # first-run-results.md` finding 6 records that at *five* seeds four of nine cases still
+    # flipped, and that ~20 per cell is what 80% power would need — so three makes per-cell
+    # stability worse, not better, and more cells will be marked unstable. What it buys is the
+    # complete 2×2: at 9 cases × 4 conditions, three seeds is 108 episodes where five is 180, and
+    # the pilot could only afford two of the four arms. The project's thesis is about the
+    # interaction of the document and the skills, and no number of seeds in half the matrix says
+    # anything about an interaction. Breadth first, depth second.
+    #
+    # This is a default, not a claim that three is enough. Raise it for any run whose purpose is
+    # to settle a per-cell question rather than to populate the grid.
+    parser.add_argument("--seeds", type=int, default=3,
+                        help="repeats per (case, condition); the same task, a different sample")
     parser.add_argument("--timeout", type=int, default=300)
     parser.add_argument("--skills", type=Path, default=None,
                         help="path to the skill bundle under test")

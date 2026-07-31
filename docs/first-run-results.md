@@ -115,6 +115,17 @@ This blocks the untested half of the 2×2, and it is the half the project's thes
 Three seeds cannot distinguish a finding from a coin flip here. Proposal: **~20 seeds per cell,
 per-case reporting only, with stability stated per cell.** Aggregates at this N are decoration.
 
+> **→ Decided (2026-07-30): three seeds, and the harness default is now 3.** This does *not*
+> retract finding 6 — three is fewer than the five that already left four of nine cases flipping,
+> so per-cell stability gets **worse** and the report will mark more cells unstable. It is a
+> deliberate trade of depth for breadth. At 9 cases × 4 conditions, three seeds is 108 episodes
+> against 180 at five, and the pilot could only afford **two of the four arms**. The thesis is
+> about the interaction of the document and the skills, and no number of seeds in half a matrix
+> says anything about an interaction — so the first complete grid is worth more right now than a
+> deeper half of one. Per-case reporting with per-cell stability stands; the aggregate stays last
+> on the page and stays labelled decoration. Raise `--seeds` for any run meant to settle a
+> per-cell question rather than to populate the grid.
+
 ### 3. Which cases to write next
 
 The cases that discriminate are those the scheduler **accepts** and the agent must **recognise**.
