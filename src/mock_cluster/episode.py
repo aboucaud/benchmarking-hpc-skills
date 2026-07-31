@@ -281,6 +281,12 @@ class DockerEpisode:
                 "final_files": artifact_text(final_files),
                 "observer": events,
                 "scored_observer_event_count": len(scored_events),
+                "observer_scoring_scope": {
+                    "episode_id": episode_id,
+                    "included_events": len(scored_events),
+                    "excluded_events": len(events) - len(scored_events),
+                },
+                "workload_submitted": l1["workload_submitted"],
                 "gateway": gateway_events,
                 "accounting": accounting,
                 "controller_log": controller_log,

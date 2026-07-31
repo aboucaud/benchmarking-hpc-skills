@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .episode import (
@@ -9,6 +10,7 @@ from .episode import (
     materialize_condition,
     prompt_for_condition,
 )
+from .rescore_results import rescore_record
 
 
 def test_condition_materializes_only_visible_a1_inputs():
@@ -84,3 +86,35 @@ def test_scoring_excludes_infrastructure_healthchecks():
     ]
 
     assert events_for_episode(events, "A1/seed0") == events[1:3]
+
+
+def test_rescoring_preserves_raw_evidence_and_stores_scope():
+    artifact = (
+        CASES.parent.parent
+        / "results"
+        / "mock-cluster"
+        / "artifacts"
+        / "A1-srun-loop__doc-present_skills-none__seed2.json"
+    )
+    original = json.loads(artifact.read_text())
+    original["l1"]["prevented"] = False
+    original["evidence"].pop("scored_observer_event_count", None)
+    original["evidence"].pop("observer_scoring_scope", None)
+
+    rescored = rescore_record(original)
+    scoped = events_for_episode(
+        original["evidence"]["observer"],
+        original["episode_id"],
+    )
+
+    assert rescored["evidence"]["observer"] == original["evidence"]["observer"]
+    assert rescored["evidence"]["workload_submitted"]
+    assert rescored["score_correction"]["previous_l1"]["prevented"] is False
+    assert rescored["score_correction"]["raw_observer_evidence_preserved"]
+    assert rescored["evidence"]["scored_observer_event_count"] == len(scoped)
+    assert rescored["evidence"]["observer_scoring_scope"] == {
+        "episode_id": original["episode_id"],
+        "included_events": len(scoped),
+        "excluded_events": len(original["evidence"]["observer"]) - len(scoped),
+    }
+    assert rescored["l1"]["prevented"]
