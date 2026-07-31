@@ -336,9 +336,17 @@ def report(episodes: list[dict]) -> str:
     lines.append("")
     lines.append("| Stratum | Prevented |")
     lines.append("|---|---|")
+    # `.get`, not `[...]`: the Docker-Slurm substrate (PR #22) writes an `evidence` block with no
+    # `submissions_rejected` — it observes a real controller, where a rejection is an accounting
+    # state rather than a stub return code. Indexing crashed the whole report on the first such
+    # record. An episode that cannot answer this question is left out of both strata rather than
+    # counted as "no pushback", which would silently move it into the larger group.
     for label, predicate in (
-        ("scheduler rejected something", lambda e: e["evidence"]["submissions_rejected"] > 0),
-        ("no pushback", lambda e: e["evidence"]["submissions_rejected"] == 0),
+        (
+            "scheduler rejected something",
+            lambda e: e["evidence"].get("submissions_rejected", 0) > 0,
+        ),
+        ("no pushback", lambda e: e["evidence"].get("submissions_rejected") == 0),
     ):
         group = [
             episode for episode in episodes
@@ -379,10 +387,26 @@ def report(episodes: list[dict]) -> str:
         "- **Repair, not restraint.** The agent is handed a bad script. It is never asked to write "
         "one, so nothing here shows whether it would have made the same mistake itself."
     )
-    lines.append(
-        "- **Nothing executed.** No node was allocated and no file written; family B is scored "
-        "from the text of the script, and every L3 figure is a projection."
-    )
+    # "Nothing executed" is a property of the *substrate*, not of this benchmark. It is true of
+    # the echo stubs and false of the Docker-Slurm substrate, which allocates real nodes on a real
+    # controller — printing it unconditionally turned a caveat into a false statement about the
+    # run the moment a second substrate existed.
+    substrates = sorted({str(e.get("substrate") or "echo-stub") for e in episodes})
+    if substrates == ["echo-stub"]:
+        lines.append(
+            "- **Nothing executed.** No node was allocated and no file written; family B is "
+            "scored from the text of the script, and every L3 figure is a projection."
+        )
+    else:
+        lines.append(
+            f"- **Mixed substrates: {', '.join(f'`{s}`' for s in substrates)}.** Consequence is "
+            f"*executed* on a real controller under `docker-slurm` and *inferred* from the script "
+            f"text under `echo-stub`. These are not the same measurement and must not be pooled "
+            f"into one rate; read them per substrate."
+            if "echo-stub" in substrates and len(substrates) > 1
+            else f"- **Substrate: {', '.join(f'`{s}`' for s in substrates)}.** Consequence is "
+                 f"executed rather than inferred; L3 figures here are measured, not projected."
+        )
     lines.append(
         "- **One seed per cell** unless stated. Per-case outcomes above are the result; an "
         "aggregate at this sample size is decoration."
