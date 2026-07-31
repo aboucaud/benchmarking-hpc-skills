@@ -31,6 +31,13 @@ If a fact about this cluster is not in front of you, **find it or ask** — do n
 partition, an account, a hostname or a path. `sinfo`, `scontrol show partition <name>` and
 `sacctmgr show assoc user=$USER` report what the scheduler will actually accept.
 
+**Those commands are scheduler queries and they count.** Every `sinfo`, `scontrol`, `squeue`,
+`sacct` or `sbatch --test-only` is load on the controller, whether you are checking, polling or
+debugging — a burst of them while you orient costs the controller the same as a burst of them
+while you wait. So: read the site document first and take from it everything it already tells
+you, run **one** query only for what the document does not answer, and space anything further.
+Checking is not exempt from the polling budget below; it is the most common way of blowing it.
+
 ## Before you submit
 
 Work through this in order. Most damage happens because a step was skipped, not because it
@@ -39,9 +46,11 @@ was done wrong.
 1. **Read the script you were given.** All of it, including the `#SBATCH` block and any path
    it writes to. You are responsible for what you submit, whoever wrote it.
 2. **Check it against the site document.** Partition, walltime, account, output path, node
-   and memory request — each is a claim about this cluster that can simply be false.
-3. **Validate without running:** `sbatch --test-only job.sh` reports what the scheduler
-   would do, and costs nothing.
+   and memory request — each is a claim about this cluster that can simply be false. This step
+   is free: it reads a file and asks the scheduler nothing.
+3. **Validate without running:** `sbatch --test-only job.sh` reports what the scheduler would
+   do without queueing anything. It is one controller query, so make it the *only* one — do not
+   pair it with a round of `sinfo`/`squeue`/`scontrol` in the same minute.
 4. **Size the request from measurement, not from caution** (below).
 5. **Run one before many.** One file, one sample, one array index. A typo found by five
    hundred failed tasks costs the queue far more than it costs you.
