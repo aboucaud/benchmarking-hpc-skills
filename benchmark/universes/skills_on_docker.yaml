@@ -1,0 +1,16 @@
+id: skills_on_docker
+description: |
+  The skills arm, on the substrate it belongs on. A transport-dependent skill needs a
+  cluster to reach: run on echo stubs it measures tool absence and yields a false
+  positive, which is why `skills.good` is marked incompatible with `substrate.echo_stubs`.
+
+  Judged by an independent model family so the skills claim is not graded by the same
+  model that produced it.
+
+decisions:
+  document: present
+  skills: good
+  substrate: docker_slurm
+  runner: codex_exec
+  replication: five
+  judge_model: independent_family

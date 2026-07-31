@@ -1,0 +1,15 @@
+id: calibration_floor
+description: |
+  The floor bound. Runs each case's script exactly as it was handed over, on the cheap
+  substrate, with no document and no skills. Asserted at 0/9 prevented.
+
+  This is a harness self-test, not a result. Its companion is `calibration_ceiling`;
+  either bound alone can make a broken detector set look perfect.
+
+decisions:
+  document: absent
+  skills: none
+  substrate: echo_stubs
+  runner: scripted_asis
+  replication: five
+  judge_model: same_family
