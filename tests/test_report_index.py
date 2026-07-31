@@ -24,6 +24,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from hpcbench.harness import report_index
 
 
@@ -151,6 +153,39 @@ def test_title_is_safe_in_output(tmp_path):
     assert "<script>alert(1)</script>Run" not in page
     # The theme toggle is the only <script> on the page; no title injected another.
     assert page.count("<script>") == 1
+
+
+def test_diagram_assets_are_inlined(tmp_path):
+    # Referenced with <img> they would neither work offline nor see the page's palette variables,
+    # so they would keep their light-mode colours in dark mode. Inlined is the contract.
+    page = report_index.render_index(tmp_path)
+
+    for name in ("substrate-stubs.svg", "substrate-docker.svg"):
+        assert (report_index.ASSETS / name).is_file(), f"missing asset: {name}"
+        assert name not in page, f"{name} is referenced rather than inlined"
+    assert "Shims on $PATH" in page
+    assert "Site client gateway" in page
+    # The authoring comment explains the file to an editor, not to a reader of the page.
+    assert "Inlined into the landing page" not in page
+
+
+def test_a_missing_diagram_asset_is_loud(tmp_path, monkeypatch):
+    # A diagram that silently vanishes on deploy is exactly the failure this page is written to
+    # avoid, so an absent asset must stop the build rather than render an empty figure.
+    monkeypatch.setattr(report_index, "ASSETS", tmp_path / "nowhere")
+
+    with pytest.raises(FileNotFoundError):
+        report_index.render_index(tmp_path)
+
+
+def test_svg_element_ids_are_unique_across_inlined_diagrams(tmp_path):
+    # Every diagram is inlined into one document, so they share an id space. Two `<marker id="ar">`
+    # means one diagram's arrowheads silently render with the other's definition.
+    page = report_index.render_index(tmp_path)
+
+    ids = re.findall(r'<(?:marker|linearGradient|clipPath|filter)\b[^>]*\bid="([^"]+)"', page)
+    assert ids, "no SVG defs found — has the diagram markup changed?"
+    assert len(ids) == len(set(ids)), f"duplicate SVG ids: {ids}"
 
 
 def test_no_external_resource_references(tmp_path):

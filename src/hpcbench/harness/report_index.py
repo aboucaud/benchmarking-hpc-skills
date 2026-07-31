@@ -397,6 +397,18 @@ figure {{ margin: 0 0 4px; }}
 figure svg {{ width: 100%; height: auto; display: block; }}
 figcaption {{ font-size: 12.5px; color: var(--text-muted); margin-top: 8px; max-width: 82ch; }}
 
+/* The substrate pair. Two separate diagrams rather than one wide one: side by side they share a
+   row grid and read as a comparison, and when the column collapses each still gets full width
+   instead of both being squeezed to illegibility. */
+.diagrams figure {{ display: flex; flex-direction: column; }}
+.dia-head {{ margin: 0 0 14px; max-width: none; }}
+.dia-head h3 {{ font-size: 16px; margin: 0 0 2px; color: var(--text-primary); }}
+.dia-head p {{ margin: 0; font-size: 13px; color: var(--text-secondary); }}
+.dia-foot {{
+  margin: 14px 0 0; font-size: 12.5px; color: var(--text-muted);
+  border-top: 1px solid var(--border); padding-top: 12px;
+}}
+
 /* ---- tables ---- */
 .scroller {{ overflow-x: auto; -webkit-overflow-scrolling: touch; }}
 table {{ border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }}
@@ -663,93 +675,24 @@ def _episode_flow_svg() -> str:
     )
 
 
-def _substrate_svg() -> str:
-    """The two substrates an episode can run against, side by side."""
-    parts = [_SVG_DEFS]
+ASSETS = Path(__file__).parent / "assets"
 
-    # --- Panel frames -----------------------------------------------------------------
-    parts.append(
-        '<rect x="2" y="2" width="482" height="386" rx="12" fill="none" '
-        'stroke="var(--border)" stroke-dasharray="5 4"/>'
-        '<rect x="514" y="2" width="484" height="386" rx="12" fill="none" '
-        'stroke="var(--border)"/>'
-        '<text x="22" y="30" font-size="15" font-weight="600" fill="var(--text-primary)">'
-        "A · Echo stubs</text>"
-        '<text x="534" y="30" font-size="15" font-weight="600" fill="var(--text-primary)">'
-        "B · Docker Slurm</text>"
-        '<text x="22" y="50" font-size="12.5" fill="var(--text-muted)">'
-        "Nothing executes. Misuse is inferred from the script.</text>"
-        '<text x="534" y="50" font-size="12.5" fill="var(--text-muted)">'
-        "Real Slurm services. Jobs actually run — inside a hard boundary.</text>"
-    )
 
-    # --- Left: stub pipeline ----------------------------------------------------------
-    parts.append(_svg_box(22, 66, 230, 46, "Agent", ["in a sandbox"]))
-    parts.append(_svg_arrow("M 137 116 V 142"))
-    parts.append(_svg_box(22, 146, 230, 74, "Shims on $PATH", [
-        "sbatch · squeue · sacct · sinfo",
-        "module — a few hundred lines of shell",
-    ]))
-    parts.append(_svg_arrow("M 137 224 V 250"))
-    parts.append(_svg_box(22, 254, 230, 74, "A plausible answer", [
-        "Job ids, a queue that drains,",
-        "Slurm's own rejection wording.",
-    ]))
-    parts.append(_svg_box(272, 146, 190, 74, "Call log", [
-        "Every invocation,",
-        "with a timestamp.",
-    ], alt=True))
-    parts.append(_svg_arrow("M 256 183 H 268", dashed=True))
-    parts.append(
-        '<text x="272" y="262" font-size="12.5" fill="var(--text-secondary)">'
-        "center.yaml generates</text>"
-        '<text x="272" y="279" font-size="12.5" fill="var(--text-secondary)">'
-        "both the stub replies</text>"
-        '<text x="272" y="296" font-size="12.5" fill="var(--text-secondary)">'
-        "and INSTRUCTIONS.md, so</text>"
-        '<text x="272" y="313" font-size="12.5" fill="var(--text-secondary)">'
-        "they cannot contradict.</text>"
-    )
-    parts.append(
-        '<text x="22" y="358" font-size="12.5" fill="var(--text-muted)">'
-        "Cost per episode: model tokens and seconds.</text>"
-        '<text x="22" y="376" font-size="12.5" fill="var(--text-muted)">'
-        "Cluster cost: exactly zero.</text>"
-    )
+def _asset_svg(name: str) -> str:
+    """An SVG authored as a file under `assets/`, inlined verbatim.
 
-    # --- Right: docker cluster --------------------------------------------------------
-    parts.append(_svg_box(534, 66, 226, 46, "Agent", ["on the login container"]))
-    parts.append(_svg_arrow("M 647 116 V 142"))
-    parts.append(_svg_box(534, 146, 226, 56, "Site client gateway", [
-        "replaces the agent-facing binaries",
-    ]))
-    parts.append(_svg_arrow("M 647 206 V 232"))
-    parts.append(_svg_box(534, 236, 226, 56, "slurmctld", [
-        "slurmdbd + MySQL accounting",
-    ]))
-    parts.append(_svg_arrow("M 647 296 V 310"))
-    parts.append(_svg_box(534, 312, 226, 68, "c1 · c2 · c3", [
-        "2 CPUs and 4 GiB each —",
-        "Docker's limit, not Slurm's",
-    ]))
-    parts.append(_svg_box(780, 146, 198, 234, "Observer", [
-        "privileged, out of reach",
-        "",
-        "· records every request",
-        "· forwards 4 job steps,",
-        "&#160; blocks the rest, cancels",
-        "· holds costly submissions",
-        "· /proc monitor catches",
-        "&#160; login-node compute",
-    ], alt=True))
-    for y in (174, 264, 346):
-        parts.append(_svg_arrow(f"M 764 {y} H 776", dashed=True))
-    return (
-        '<svg viewBox="0 0 1000 390" xmlns="http://www.w3.org/2000/svg" role="img" '
-        'aria-label="Echo stubs compared with the Docker Slurm cluster">'
-        + "".join(parts)
-        + "</svg>"
-    )
+    Inlined rather than referenced with `<img>` for two reasons: the page promises to make no
+    network requests, and an external SVG cannot see the page's palette variables, so a referenced
+    file would keep its light-mode colours in dark mode.
+
+    Missing is a hard error rather than a silently empty figure — a diagram that vanishes on
+    deploy is the failure this page is written to avoid.
+    """
+    path = ASSETS / name
+    if not path.is_file():
+        raise FileNotFoundError(f"missing diagram asset: {path}")
+    # Strip the authoring comment; it explains the file to an editor, not to a reader of the page.
+    return re.sub(r"^\s*<!--.*?-->\s*", "", path.read_text(encoding="utf-8"), flags=re.DOTALL)
 
 
 # ------------------------------------------------------------------------------------------
@@ -918,7 +861,27 @@ def _substrate_section() -> str:
             "<code>sbatch</code> the agent types. Which one produced a number changes what that "
             "number is evidence of, so every report names its substrate.",
         )
-        + f"<figure>{_substrate_svg()}</figure>"
+        + '<div class="cols diagrams">'
+        '<figure class="panel"><figcaption class="dia-head">'
+        "<h3>A · Echo stubs</h3>"
+        "<p>Shell shims stand in for the scheduler. Used for the full 2×2 matrix.</p>"
+        "</figcaption>"
+        f"{_asset_svg('substrate-stubs.svg')}"
+        '<p class="dia-foot"><code>center.yaml</code> generates both the stub replies and the '
+        "<code>INSTRUCTIONS.md</code> the agent reads, so the mock cluster and the published "
+        "document cannot contradict each other.</p>"
+        "</figure>"
+        '<figure class="panel"><figcaption class="dia-head">'
+        "<h3>B · Docker Slurm</h3>"
+        "<p>Real Slurm services on a laptop. Used for the document ablation.</p>"
+        "</figcaption>"
+        f"{_asset_svg('substrate-docker.svg')}"
+        '<p class="dia-foot">Slurm exposes the full 440-node inventory, so a 32-node request is '
+        "validated against real centre policy — while three small containers do the only work "
+        "that actually happens. Docker's own CPU and memory limits stay authoritative whatever "
+        "Slurm advertises.</p>"
+        "</figure>"
+        "</div>"
         '<div class="scroller" style="margin-top:18px"><table>'
         "<thead><tr><th></th><th>A · Echo stubs</th><th>B · Docker Slurm</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div>"
