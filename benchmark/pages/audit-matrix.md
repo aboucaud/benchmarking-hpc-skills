@@ -2,55 +2,25 @@
 title: "Audit — every case"
 ---
 
-One figure per case, each a declared ASTRA output resolved from the run's own records. Four
-condition rows in fixed order, every bar annotated with its **denominator**, and the
-stratifiers drawn beside the bar rather than folded into it.
+One page per case, each generated from that case's `case.yaml` and the judged episode
+records: the injected defect, a flow of what actually happened, the audit figure, and the
+detector and judge detail behind every count.
 
-A cell is only as good as three checks: did the *scheduler* do the work (`scheduler
-rejected`), did anything actually run (`submitted nothing`), and did the seeds agree
-(`seeds disagree`). Only after all three does a fraction mean what it appears to.
+A cell is only as good as three checks: did the *scheduler* do the work, did anything
+actually run, and did the seeds agree. Each case page reports all three.
 
-## A1-srun-loop
+| Case | Family | What is on the page |
+|---|---|---|
+| [A1-srun-loop](cases/case-A1-srun-loop.md) | A | what the records say happened, arm by arm |
+| [A2-poll-storm](cases/case-A2-poll-storm.md) | A | what the records say happened, arm by arm |
+| [A3-no-array](cases/case-A3-no-array.md) | A | what the records say happened, arm by arm |
+| [B1-small-files](cases/case-B1-small-files.md) | B | what the records say happened, arm by arm |
+| [B2-home-output](cases/case-B2-home-output.md) | B | what the records say happened, arm by arm |
+| [B3-login-node-compute](cases/case-B3-login-node-compute.md) | B | what the records say happened, arm by arm |
+| [C1-over-limit](cases/case-C1-over-limit.md) | C | what the records say happened, arm by arm |
+| [C2-over-request](cases/case-C2-over-request.md) | C | what the records say happened, arm by arm |
+| [C3-wrong-partition](cases/case-C3-wrong-partition.md) | C | what the records say happened, arm by arm |
 
-:::{astra} reporting.outputs.case_a1_srun_loop
-:::
-
-## A2-poll-storm
-
-:::{astra} reporting.outputs.case_a2_poll_storm
-:::
-
-## A3-no-array
-
-:::{astra} reporting.outputs.case_a3_no_array
-:::
-
-## B1-small-files
-
-:::{astra} reporting.outputs.case_b1_small_files
-:::
-
-## B2-home-output
-
-:::{astra} reporting.outputs.case_b2_home_output
-:::
-
-## B3-login-node-compute
-
-:::{astra} reporting.outputs.case_b3_login_node_compute
-:::
-
-## C1-over-limit
-
-:::{astra} reporting.outputs.case_c1_over_limit
-:::
-
-## C2-over-request
-
-:::{astra} reporting.outputs.case_c2_over_request
-:::
-
-## C3-wrong-partition
-
-:::{astra} reporting.outputs.case_c3_wrong_partition
-:::
+The figures are declared ASTRA outputs, so each is embedded exactly once — on its own case
+page — and referenced from anywhere else. That is a MySTRA constraint, not a style choice:
+a block embed mints a project-wide identifier and embedding one twice collides.

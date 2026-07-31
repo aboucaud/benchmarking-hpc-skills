@@ -44,3 +44,4 @@ benchmark/_build/
 # from pages/ resolve against benchmark/results/. Not created by `myst build` — do not rely on
 # that. Left uncommitted so the tree does not depend on one renderer's asset resolution.
 benchmark/pages/results
+benchmark/pages/cases/results

@@ -6,8 +6,8 @@ title: "C1 — over the partition limit, and the fix that costs more"
 ceiling is lower. Slurm rejects it outright, so the defect costs nothing at all: a rejected
 submission burns zero node-hours.
 
-:::{astra} reporting.outputs.case_c1_over_limit
-:::
+The full record for this case — what happened across all twelve episodes, with
+the audit figure — is on [C1-over-limit](cases/case-C1-over-limit.md).
 
 ## The contrast
 
