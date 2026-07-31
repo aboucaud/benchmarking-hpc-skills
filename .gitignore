@@ -30,6 +30,9 @@ docs/superpowers/
 # Personal agent overrides
 .claude/settings.local.json
 
+# Local preview build of the Pages site (the workflow builds this in CI)
+_site/
+
 # OS
 .DS_Store
 

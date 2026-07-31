@@ -372,26 +372,49 @@ def test_no_arm_is_labelled_good_or_absent(tmp_path, unstable_run):
 
 def test_the_grid_says_what_a_denominator_is(tmp_path, unstable_run):
     """`2/5` reads as two things out of five. It is one thing attempted five times, and that is
-    the single most misread number on the page — so the definition ships with the grid."""
+    the single most misread number on the page — so the definition ships with the grid.
+
+    The rest of the old glossary (case, instructions, skill, family) was the benchmark's design
+    rather than this run's result, and now lives on the project page. These two definitions stay
+    because they cannot be looked up anywhere else: `2/5` is a chart-reading key, and *prevented*
+    means something different in a judged file than an unjudged one.
+    """
     page = render(tmp_path, unstable_run)
-    assert "How to read this grid" in page
-    glossary = page.split("How to read this grid", 1)[1][:4000]
-    assert "seed" in glossary.lower()
-    assert "same case" in glossary.lower()
-    for term in ("Case", "Prevented", "Instructions", "Skill", "Family"):
-        assert f"<dt>{term}" in glossary, f"{term} missing from the grid glossary"
+    key = page.split('class="cellkey"', 1)[1].split("</p>", 1)[0]
+    assert "seed" in key.lower()
+    assert "2/5" in key
+    assert "not two things out of five" in key
+    assert "flips" in key
+    # Prevented without a submission is the trap that makes an arm look good for refusing to work.
+    assert "does <b>not</b> require a submission" in key
+    assert "prevented + submitted" in key
 
 
-def test_every_family_on_the_grid_is_named_and_explained(tmp_path, unstable_run):
-    """Family is a colour on every row. A colour with no key is decoration, so each letter that
-    appears has to arrive with its name, what it abuses, and which cases are in it — and the key
-    is built from the case files, so a new family cannot appear without one."""
+def test_a_report_links_out_to_the_method_without_leaving_the_page_broken(tmp_path, unstable_run):
+    """A trimmed report has to say where the method went, and the link has to be relative.
+
+    The published site puts `index.html` beside every report, so `./index.html` resolves there.
+    An absolute URL would break the promise that these files open offline, which
+    `test_no_external_references` enforces — this is the other half of that rule.
+    """
     page = render(tmp_path, unstable_run)
-    key = page.split('class="famkey"', 1)[1].split("</div></div>", 1)[0]
+    assert 'href="./index.html"' in page
+
+
+def test_every_family_on_the_grid_is_named(tmp_path, unstable_run):
+    """Family is a colour on every row, and a colour with no key is decoration. Each letter that
+    appears has to arrive with its name and its member cases, built from the case files so a new
+    family cannot appear without one.
+
+    What it no longer carries is what that family costs a facility: that is what the grouping
+    means, not what this run found, and repeating it on every report crowded out the result.
+    """
+    page = render(tmp_path, unstable_run)
+    key = page.split('class="famkey"', 1)[1].split("</dl>", 1)[0]
     for case_id in {episode["case"] for episode in unstable_run}:
         letter = case_id[:1]
         assert f"<dt>{letter} —" in key, f"family {letter} is on the grid with no key entry"
-    assert "Abuses" in key
+        assert case_id in key, f"{case_id} is on the grid but not in the family key"
 
 
 def test_unpublishable_evidence_is_announced_not_silently_rendered(tmp_path):

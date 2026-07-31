@@ -24,6 +24,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from hpcbench.harness import report_index
 
 
@@ -75,6 +77,25 @@ def test_report_without_provenance_is_still_listed(tmp_path):
 
     assert [r.filename for r in reports] == ["bare.html"]
     assert reports[0].chips == []
+
+
+def test_episode_total_sums_every_report(tmp_path):
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B", provenance={"Episodes": "90"})
+
+    assert report_index._episode_total(report_index.discover_reports(tmp_path)) == 198
+
+
+def test_episode_total_is_withheld_when_a_report_cannot_be_read(tmp_path):
+    # A partial sum reads as a complete one, and contradicts the cards below it. Better to show
+    # no total than a total that quietly omits a run.
+    _write_report(tmp_path, "a.html", "A", provenance={"Episodes": "108"})
+    _write_report(tmp_path, "b.html", "B")
+
+    reports = report_index.discover_reports(tmp_path)
+
+    assert report_index._episode_total(reports) is None
+    assert "episodes published" not in report_index.render_index(tmp_path)
 
 
 def test_index_excludes_itself(tmp_path):
@@ -134,17 +155,121 @@ def test_title_is_safe_in_output(tmp_path):
     assert page.count("<script>") == 1
 
 
-def test_no_external_resource_references(tmp_path):
-    _write_report(tmp_path, "run.html", "Run")
-
+def test_diagram_assets_are_inlined(tmp_path):
+    # Referenced with <img> they would neither work offline nor see the page's palette variables,
+    # so they would keep their light-mode colours in dark mode. Inlined is the contract.
     page = report_index.render_index(tmp_path)
 
-    assert "<script src" not in page
-    assert "<link " not in page
-    assert "@import" not in page
-    assert "http://" not in page
-    # The only absolute URL allowed is the source-repo link in the footer.
-    assert page.count("https://") == page.count(report_index.REPO_URL)
+    for name in ("substrate-stubs.svg", "substrate-docker.svg"):
+        assert (report_index.ASSETS / name).is_file(), f"missing asset: {name}"
+        assert name not in page, f"{name} is referenced rather than inlined"
+    assert "Shims on $PATH" in page
+    assert "Site client gateway" in page
+    # The authoring comment explains the file to an editor, not to a reader of the page.
+    assert "Inlined into the landing page" not in page
+
+
+def test_a_missing_diagram_asset_is_loud(tmp_path, monkeypatch):
+    # A diagram that silently vanishes on deploy is exactly the failure this page is written to
+    # avoid, so an absent asset must stop the build rather than render an empty figure.
+    monkeypatch.setattr(report_index, "ASSETS", tmp_path / "nowhere")
+
+    with pytest.raises(FileNotFoundError):
+        report_index.render_index(tmp_path)
+
+
+def test_svg_element_ids_are_unique_across_inlined_diagrams(tmp_path):
+    # Every diagram is inlined into one document, so they share an id space. Two `<marker id="ar">`
+    # means one diagram's arrowheads silently render with the other's definition.
+    page = report_index.render_index(tmp_path)
+
+    ids = re.findall(r'<(?:marker|linearGradient|clipPath|filter)\b[^>]*\bid="([^"]+)"', page)
+    assert ids, "no SVG defs found — has the diagram markup changed?"
+    assert len(ids) == len(set(ids)), f"duplicate SVG ids: {ids}"
+
+
+def _write_document(root: Path, path: str, body: str) -> None:
+    full = root / path
+    full.parent.mkdir(parents=True, exist_ok=True)
+    full.write_text(body, encoding="utf-8")
+
+
+def test_documents_are_shown_verbatim(tmp_path):
+    # The section exists to show the reader the actual file, so it must not be paraphrased,
+    # truncated, or rendered from markdown into something the agent never saw.
+    root = tmp_path / "repo"
+    _write_document(root, "benchmark/generated/INSTRUCTIONS.md", "# SCC\n\n- never poll <fast>\n")
+
+    page = report_index.render_index(tmp_path, repo_root=root)
+
+    assert "# SCC" in page
+    # Document text is data: one stray angle bracket must not become markup.
+    assert "- never poll &lt;fast&gt;" in page
+    assert "<fast>" not in page
+
+
+def test_both_documents_get_their_own_pane(tmp_path):
+    root = tmp_path / "repo"
+    _write_document(root, "benchmark/generated/INSTRUCTIONS.md", "GENERATED DOC")
+    _write_document(root, "agents/INSTRUCTIONS.md", "AGENTS DOC")
+
+    page = report_index.render_index(tmp_path, repo_root=root)
+
+    assert "GENERATED DOC" in page and "AGENTS DOC" in page
+    assert page.count('type="radio"') == 2
+    # Exactly one pane starts visible, or the panes stack on top of each other on first paint.
+    assert page.count(" checked>") == 1
+
+
+def test_document_section_and_its_nav_entry_are_dropped_together(tmp_path):
+    # A nav link to a section that was never rendered is a link to nowhere.
+    page = report_index.render_index(tmp_path, repo_root=tmp_path / "empty")
+
+    assert 'id="document"' not in page
+    assert 'href="#document"' not in page
+
+
+def test_document_tabs_need_no_script(tmp_path):
+    # The page ships exactly one <script>, for the theme toggle. A viewer for a static file does
+    # not justify a second one, and the CSS-only tabs must keep it that way.
+    root = tmp_path / "repo"
+    _write_document(root, "benchmark/generated/INSTRUCTIONS.md", "doc")
+    _write_document(root, "agents/INSTRUCTIONS.md", "doc")
+
+    page = report_index.render_index(tmp_path, repo_root=root)
+
+    assert page.count("<script>") == 1
+
+
+def test_no_external_resource_references(tmp_path):
+    _write_report(tmp_path, "run.html", "Run")
+    # A real document carries the facility's (fake) support URL. Quoted inside the page it is
+    # inert text, but it must not be mistaken for a resource reference by the check below.
+    root = tmp_path / "repo"
+    _write_document(
+        root, "benchmark/generated/INSTRUCTIONS.md", "Docs: https://scc.example.invalid/docs\n"
+    )
+
+    page = report_index.render_index(tmp_path, repo_root=root)
+    assert "scc.example.invalid" in page, "the document was not included in this check"
+    # `xmlns="http://www.w3.org/2000/svg"` is an XML namespace name, never fetched, and a URL
+    # inside a <pre> is quoted document text. Neither is a resource this page loads. Drop both, so
+    # the check below stays a literal "no plaintext URLs" rule over the page's own markup.
+    markup = re.sub(r"<pre\b.*?</pre>", "", page, flags=re.DOTALL).replace(
+        'xmlns="http://www.w3.org/2000/svg"', ""
+    )
+
+    assert "<script src" not in markup
+    assert "<link " not in markup
+    assert "@import" not in markup
+    assert "http://" not in markup
+    # Every absolute URL is an outbound link to a declared destination — never a fetched
+    # resource. An undeclared host is how a self-contained page starts depending on a CDN.
+    for url in re.findall(r'href="(https://[^"]+)"', markup):
+        assert url.startswith(report_index.EXTERNAL_LINK_PREFIXES), f"undeclared link: {url}"
+    # Nothing outside an href may carry a URL either, except the repo URL shown as link text.
+    remainder = re.sub(r'href="https://[^"]+"', "", markup).replace(report_index.REPO_URL, "")
+    assert "https://" not in remainder
 
 
 def test_write_command_creates_output(tmp_path):
