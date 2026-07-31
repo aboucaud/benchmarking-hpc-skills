@@ -621,6 +621,10 @@ table.data th, table.data td { padding: 5px 9px; text-align: left;
 table.data th { position: sticky; top: 0; background: var(--surface-1); font-size: 11.5px;
   text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); z-index: 1; }
 table.data td.num { font-variant-numeric: tabular-nums; }
+/* Row labels in the layer tables carry a gloss under the name — the reader should not have to
+   hold "static means did it repair the defect" in their head while reading the numbers. */
+table.data td .sub { display: block; color: var(--text-muted); font-size: 11.5px;
+  white-space: normal; margin-top: 2px; }
 .tablewrap { max-height: 520px; overflow: auto; border: 1px solid var(--border);
   border-radius: 8px; background: var(--surface-1); }
 
@@ -1490,6 +1494,135 @@ def table_section(episodes: list[dict]) -> str:
     )
 
 
+def layers_section(episodes: list[dict], conditions_all: list[str]) -> str:
+    """Which L1 layer failed, and which detector inside it.
+
+    The grid answers *how often* an arm prevented the misuse. It cannot answer *what went wrong*,
+    and those are different questions with, in this run, different answers: an arm can repair the
+    injected defect more often than the control and still finish below it, because the endpoint
+    is a conjunction and the second layer fails for its own reasons.
+
+    Kept as a table rather than a chart on purpose. The reader needs exact counts and detector
+    names, and the row that matters most (one detector accounting for every failure in an arm) is
+    a fact about identity, not magnitude — a bar chart would round it away. No heat colour either:
+    shading failure counts would assert that more red is worse, which is the reading under dispute
+    below rather than something this page should presuppose.
+    """
+    layers = ("static", "call_log")
+    layer_name = {"static": "static", "call_log": "call log"}
+
+    # A detector only produces a finding on the cases whose case.yaml asks for it, so its
+    # denominator is not the arm size. Carrying that denominator through is the whole point of the
+    # section: "8 failures" and "8 failures out of 9 episodes that could fail" are different
+    # claims, and only the second one is comparable across arms.
+    carried: dict[tuple[str, str], int] = defaultdict(int)
+    failed: dict[tuple[str, str], int] = defaultdict(int)
+    detector_layer: dict[str, str] = {}
+    for episode in episodes:
+        label = episode["condition"]["label"]
+        for layer in layers:
+            for finding in ((episode.get("l1") or {}).get(layer) or {}).get("findings") or []:
+                name = finding.get("detector")
+                if not name:
+                    continue
+                detector_layer.setdefault(name, layer)
+                carried[(name, label)] += 1
+                if not finding.get("passed"):
+                    failed[(name, label)] += 1
+
+    if not carried:
+        return ""
+
+    populated = [
+        label
+        for label in conditions_all
+        if any(episode["condition"]["label"] == label for episode in episodes)
+    ]
+
+    head = "".join(f"<th>{e(condition_line(label))}</th>" for label in populated)
+
+    layer_rows = []
+    for layer in layers:
+        cells = []
+        for label in populated:
+            group = [x for x in episodes if x["condition"]["label"] == label]
+            scored = [x for x in group if ((x.get("l1") or {}).get(layer) or {}).get("verdict")]
+            bad = sum(
+                1 for x in scored if (x["l1"][layer] or {}).get("verdict") == "fail"
+            )
+            cells.append(
+                f'<td class="num">{len(scored) - bad}/{len(scored)}</td>'
+                if scored
+                else '<td class="num muted">—</td>'
+            )
+        passed_label = (
+            "repaired the defect" if layer == "static" else "conduct within the site's budget"
+        )
+        layer_rows.append(
+            f'<tr><td><b>L1 {e(layer_name[layer])}</b>'
+            f'<span class="sub">{e(passed_label)}</span></td>{"".join(cells)}</tr>'
+        )
+
+    detector_rows = []
+    for name in sorted(detector_layer, key=lambda d: (detector_layer[d], d)):
+        cells = []
+        for label in populated:
+            n = carried[(name, label)]
+            k = failed[(name, label)]
+            cells.append(
+                f'<td class="num">{k}/{n}</td>' if n else '<td class="num muted">—</td>'
+            )
+        detector_rows.append(
+            f"<tr><td><code>{e(name)}</code>"
+            f'<span class="sub">L1 {e(layer_name[detector_layer[name]])}</span></td>'
+            f'{"".join(cells)}</tr>'
+        )
+
+    # State the concentration if there is one, computed rather than asserted: an arm whose call-log
+    # failures all come from a single detector is a finding about that detector, and the sentence
+    # should not survive into a run where it stops being true.
+    notes = []
+    for label in populated:
+        call_detectors = [d for d in detector_layer if detector_layer[d] == "call_log"]
+        totals = {d: failed[(d, label)] for d in call_detectors}
+        total = sum(totals.values())
+        hot = [d for d, k in totals.items() if k]
+        if total and len(hot) == 1:
+            name = hot[0]
+            notes.append(
+                f"<li><b>{e(condition_line(label))}</b>: all {total} call-log failures are "
+                f"<code>{e(name)}</code>, out of {carried[(name, label)]} episodes whose case "
+                f"carries that detector.</li>"
+            )
+
+    concentration = (
+        f'<ul class="plain" style="margin-top:14px">{"".join(notes)}</ul>' if notes else ""
+    )
+
+    return (
+        '<section id="layers"><div class="sec-head"><h2>Which layer failed</h2>'
+        '<p class="caveat-line">The endpoint is a conjunction, so a cell can miss for two '
+        "unrelated reasons: the agent did not repair the injected defect (<i>static</i>), or it "
+        "repaired it and misbehaved on the way (<i>call log</i>). Read as passes out of the "
+        "episodes each layer scored.</p></div>"
+        f'<div class="tablewrap"><table class="data"><thead><tr><th>Layer</th>{head}</tr></thead>'
+        f'<tbody>{"".join(layer_rows)}</tbody></table></div>'
+        '<div class="sec-head" style="margin-top:22px"><h3>Which detector fired</h3>'
+        '<p class="caveat-line">Failures out of the episodes whose case carries that detector — '
+        "not out of the arm. A detector defined on three of nine cases has a denominator of nine, "
+        "not twenty-seven, and comparing its raw count against another detector's is a category "
+        "error.</p></div>"
+        f'<div class="tablewrap"><table class="data"><thead><tr><th>Detector</th>{head}</tr>'
+        f'</thead><tbody>{"".join(detector_rows)}</tbody></table></div>'
+        f"{concentration}"
+        '<p class="small muted" style="margin-top:14px">A single detector carrying every failure '
+        "in an arm is not by itself evidence that the arm behaved badly, nor that the detector is "
+        "miscalibrated. It localises the disagreement to one threshold, which is the point at "
+        "which a sysadmin has to say which reading is right — see the review gate above.</p>"
+        "</section>"
+    )
+
+
 def limits_section() -> str:
     return (
         '<section id="limits"><div class="sec-head"><h2>What this does not measure</h2></div>'
@@ -1562,6 +1695,7 @@ def build_page(
         f"{grid_html}"
         f"{census_section(census, judged)}"
         f"{cases_section(grid, cases, conditions)}"
+        f"{layers_section(episodes, conditions)}"
         f"{arms_section(episodes, conditions, judged)}"
         f"{table_section(episodes)}"
         f"{limits_section()}"
