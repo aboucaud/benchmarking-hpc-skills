@@ -74,8 +74,20 @@ echo
 
 # caffeinate: -i no idle sleep, -m no disk sleep, -s no system sleep on AC. Without it the
 # machine suspends partway and the run dies silently. Closing the lid still sleeps it.
+# `--runner` and `--model` are passed explicitly and must stay that way.
+#
+# `episode.py` defaults to `--runner noop`, which is the right default for a tool people use to
+# inspect a condition without spending anything — and catastrophic here: it runs no agent, every
+# episode comes back `INVALID — no transcript`, and the run looks like it is working. The first
+# version of this script omitted it and produced 4 invalid episodes before it was killed.
+#
+# `--model sonnet` is the pilot's subject. Left implicit it is also sonnet today, but the subject
+# model is part of the measurement — the report prints it in the provenance band — so it is
+# stated rather than inherited from a default that may move.
 caffeinate -ims uv run --with pyyaml src/hpcbench/harness/episode.py all \
     --matrix \
+    --runner claude-code \
+    --model sonnet \
     --skills "$SKILLS" \
     --seeds "$SEEDS" \
     --results results \
