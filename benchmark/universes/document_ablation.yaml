@@ -1,0 +1,17 @@
+id: document_ablation
+description: |
+  The headline arm: does the center's INSTRUCTIONS.md change conduct? Document present,
+  no skills, echo stubs, five seeds.
+
+  Pair with an otherwise identical universe selecting `document: absent`. Read the two
+  together stratified by `submissions_rejected` — over the cases that are neither
+  scheduler-rejected nor passed by inaction the contrast is 2/30 without the document
+  against 7/30 with it, and A3 is the only case the document plausibly moves.
+
+decisions:
+  document: present
+  skills: none
+  substrate: echo_stubs
+  runner: claude_code
+  replication: five
+  judge_model: same_family

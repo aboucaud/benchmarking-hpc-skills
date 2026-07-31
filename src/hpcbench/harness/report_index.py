@@ -761,6 +761,7 @@ NAV = [
     ("matrix", "The matrix"),
     ("judging", "Judging"),
     ("findings", "Findings"),
+    ("astra", "ASTRA report"),
     ("reports", "Reports"),
 ]
 
@@ -1278,6 +1279,26 @@ def _card(report: Report) -> str:
     )
 
 
+def _astra_section() -> str:
+    """The MySTRA report, which is a different kind of artifact from the per-run HTML reports.
+
+    Those render one run. This renders the *experiment* — the decision space, the findings, an
+    audit figure per case — with every measured value interpolated from the episode records at
+    build time rather than typed in. It gets a section rather than a link in the footer because a
+    collaborator landing here would otherwise never learn it exists.
+    """
+    return (
+        _sec_head(
+            "astra", "The experiment itself", "Rendered from its own ASTRA spec",
+            "The benchmark expressed as a multiverse analysis: which decisions were made and which "
+            "were left open, one audit figure per case, and prose whose every number comes from "
+            "the records at build time — so the page cannot drift from the run it describes.",
+        )
+        + '<p class="lede" style="margin-top:4px">'
+        '<a href="./astra/"><b>Browse the ASTRA report →</b></a></p>'
+    )
+
+
 def _reports_section(reports: list[Report]) -> str:
     if reports:
         n = len(reports)
@@ -1334,6 +1355,7 @@ def render_index(reports_dir: Path, repo_root: Path = Path(".")) -> str:
         f"{_matrix_section()}"
         f"{_judging_section()}"
         f"{_findings_section()}"
+        f"{_astra_section()}"
         f"{_reports_section(reports)}"
         "<footer>"
         "<p>Built for <b>Benchmarking #4</b> of the "
