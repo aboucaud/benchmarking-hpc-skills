@@ -1,0 +1,54 @@
+name: Pages
+
+# Publishes the results landing page + every rendered report under docs/reports/ to GitHub Pages.
+# The repo's Pages build type is already "workflow", so this workflow *is* the publish step — no
+# repo-settings change is needed. The landing page (index.html) is built here at deploy time rather
+# than committed, so the published index always matches the reports actually present on main.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/reports/**"
+      - "src/hpcbench/harness/report_index.py"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; do not cancel an in-flight publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      # Assemble the published tree: the generated index alongside the reports it links.
+      - name: Build site
+        run: |
+          uv run --with pyyaml python -m hpcbench.harness.report_index write \
+            --reports docs/reports --out _site/index.html
+          # Copy the reports next to the generated index; never overwrite that fresh index.html
+          # with a stray committed one.
+          for f in docs/reports/*.html; do
+            [ -e "$f" ] || continue
+            [ "$(basename "$f")" = "index.html" ] && continue
+            cp "$f" _site/
+          done
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
