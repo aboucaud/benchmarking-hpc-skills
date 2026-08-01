@@ -805,15 +805,20 @@ def provenance_section(
             f"<div>{text}</div></div>"
         )
 
-    # A record may declare itself unfit to leave the project. The Docker-Slurm substrate (PR #22)
-    # stamps `publishable_evidence: false` on every episode until an administrator has reviewed
-    # what the observer captured — and this page is, by construction, the artefact that gets sent
-    # to another group. Rendering such a record silently is the one failure here that is not a
-    # measurement error but a disclosure: the flag exists precisely to stop what this file does.
+    # `publishable_evidence` is not a disclosure control, though it was once worded as one.
+    # The runner computes it as `review_status == "signed-off"` (src/mock_cluster/episode.py) —
+    # the same expression as `administrator_signoff`. All three fields are one fact under three
+    # names: whether a sysadmin has validated the CASE DESIGN. Nothing in it knows whether the
+    # captured evidence is safe to release.
     #
-    # It is surfaced rather than filtered. Dropping the episodes would leave a page that looks
-    # complete and is not, which is the same class of lie in the other direction. The reader is
-    # told, at the top, in the strongest band on the page.
+    # The band used to say this page was "internal" and must not "leave the project", while
+    # `.github/workflows/pages.yml` published it to a public URL — so the words and the workflow
+    # contradicted each other, and the words claimed knowledge the flag does not have. It now
+    # states what the flag actually means. If a real release control is ever needed it should be
+    # a separate field set by a separate review, not this one.
+    #
+    # Still surfaced rather than filtered. Dropping the episodes would leave a page that looks
+    # complete and is not, which is the same class of lie in the other direction.
     withheld = sorted(
         {
             str(episode.get("substrate") or episode.get("runner") or "unknown")
@@ -825,14 +830,17 @@ def provenance_section(
         n = sum(1 for episode in episodes if episode.get("publishable_evidence") is False)
         add(
             "critical",
-            "do not circulate",
+            "unreviewed cases — do not quote",
             f"<b>{n} episode{'s' if n != 1 else ''} on this page are marked "
             f"<code>publishable_evidence: false</code> by the runner that produced them "
             f"({', '.join(f'<code>{e(s)}</code>' for s in withheld)}).</b> "
-            f"That flag means an administrator has not yet reviewed what was captured. "
-            f"This file is the thing we send to other groups — so until those episodes are "
-            f"cleared, <b>this page is internal</b>. Regenerate it without them, or get the "
-            f"review, before it leaves the project.",
+            f"That flag is set from the case's <code>review_status</code>: no one with sysadmin "
+            f"experience has confirmed the injected defect is realistic, that the rest of the "
+            f"script is clean enough to attribute a failure, or that the accepted-remedy list is "
+            f"complete. <b>Every number here is a pilot result and none of it is evidence yet.</b> "
+            f"This page is published deliberately, caveat attached — the flag is a scientific "
+            f"gate, not a release control, and says nothing about whether the capture is safe to "
+            f"share.",
         )
     if unsigned:
         add(
