@@ -32,6 +32,12 @@ Two rules it follows, both about not becoming a second source of truth:
 2. **Nothing is aggregated that the harness reports separately.** Excluded, accidental and
    needs-review episodes travel as their own columns rather than being folded into a rate,
    because that separation is the finding, not presentation.
+
+And one rule about what may be aggregated at all: **records that disagree about which
+intervention they ran are not pooled.** This is the point where episodes stop being episodes
+and become a published number, so it is the last point at which "these are two experiments"
+can still be said. `--allow-mixed-intervention` exists for the case where someone genuinely
+wants the pooled view, and it makes them say so in the command line.
 """
 
 from __future__ import annotations
@@ -46,6 +52,7 @@ from pathlib import Path
 # The entry-point bootstrap used by every module here: run by path, with `src` on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from hpcbench.harness.provenance import audit  # noqa: E402
 from hpcbench.harness.report import endpoint_of, is_scoreable  # noqa: E402
 from hpcbench.paths import BENCHMARK  # noqa: E402
 
@@ -126,11 +133,25 @@ def main() -> int:
     parser.add_argument("--focal-doc", default="present",
                         help="document arm the scalar metric summarises")
     parser.add_argument("--focal-skills", default="none")
+    parser.add_argument("--allow-mixed-intervention", action="store_true",
+                        help="publish anyway when the records disagree about which document or "
+                             "skill bundle they ran against; the disagreement is still reported")
     args = parser.parse_args()
 
     records = [json.loads(line) for line in args.episodes.read_text().splitlines() if line.strip()]
     if not records:
         print(f"no records in {args.episodes}", file=sys.stderr)
+        return 1
+
+    # Before anything is aggregated. A rate over two interventions is not a rate over either, and
+    # the labels cannot show it: #29's two documents both said `doc-present` for the whole pilot.
+    provenance = audit(records)
+    for problem in provenance.problems:
+        print(f"mixed intervention — {problem}", file=sys.stderr)
+    if provenance.problems and not args.allow_mixed_intervention:
+        print("refusing to publish a pooled rate over more than one experiment; re-run per "
+              "intervention, or pass --allow-mixed-intervention to publish it anyway",
+              file=sys.stderr)
         return 1
 
     rows = rows_from(records)
@@ -159,11 +180,38 @@ def main() -> int:
         "unit": f"cells of {len(rows)} whose seeds disagreed",
     }, indent=2) + "\n")
 
+    # Published beside the numbers, not merely checked before them.
+    #
+    # A universe file pins which *option* of each decision ran — `document: present`. It has no
+    # way to say which document that was, and the option id stayed `present` across the rewrite
+    # that changed the intervention (#29). This artifact is the missing half: the page that
+    # quotes a rate can name the material the rate was measured on.
+    manifest = write_artifact(args.universe, "intervention_manifest", ".json")
+    manifest.write_text(json.dumps({
+        "episodes": len(records),
+        "stamped": provenance.stamped,
+        # Named `unstamped`, and counted, because an absent stamp is unknown rather than
+        # matching. A reader that treats missing as agreement gets a clean bill of health for
+        # exactly the records that cannot support one.
+        "unstamped": len(provenance.unstamped),
+        "document_sha256": sorted(provenance.values["document_sha256"]),
+        "skills_sha256": sorted(provenance.values["skills_sha256"]),
+        # Keyed `<substrate>/<case>` because the value is only comparable within a substrate —
+        # the two deliver `prompt.md` differently, so an unchanged case stamps two digests.
+        "case_files_sha256": {
+            f"{substrate}/{case}": sorted(seen)
+            for (substrate, case), seen in sorted(provenance.case_files.items())
+        },
+        "mixed": provenance.problems,
+    }, indent=2) + "\n")
+
     print(f"universe {args.universe}: {len(records)} episodes -> {len(rows)} cells")
     print(f"  {grid.relative_to(BENCHMARK.parent)}")
     print(f"  {endpoint.relative_to(BENCHMARK.parent)}  "
           f"({prevented}/{scored} in doc-{args.focal_doc} skills-{args.focal_skills})")
     print(f"  {unstable.relative_to(BENCHMARK.parent)}")
+    print(f"  {manifest.relative_to(BENCHMARK.parent)}  "
+          f"({provenance.stamped} stamped, {len(provenance.unstamped)} unstamped)")
     return 0
 
 
