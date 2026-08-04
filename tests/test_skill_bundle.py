@@ -92,6 +92,33 @@ def test_no_benchmark_documentation_ships_to_the_agent():
         )
 
 
+def test_the_bundle_links_to_nothing_it_does_not_ship():
+    """A relative link to a file that is not in the bundle sends the agent out of its sandbox.
+
+    The footer used to point at `[PROVENANCE.md](PROVENANCE.md)`. That file exists — beside the
+    bundle, as `PROVENANCE-hpc-conduct.md`, deliberately outside what `materialize` copies — so
+    inside a sandbox the link resolves to nothing. **54 episodes went looking for it.** None found
+    provenance content and none escaped as a result, but the skill under test was actively
+    telling agents to search outside the directory they were given, in the same run where 36
+    episodes searched the host filesystem (#36).
+
+    Derived from the bundle rather than pinned to that one link, so the next footer is covered
+    too: any inline markdown target that is not a URL, not an anchor, and not a path the bundle
+    actually contains is the same instruction to go hunting.
+    """
+    for path in sorted(BUNDLE.rglob("*")):
+        if not path.is_file() or path.suffix != ".md":
+            continue
+        for target in re.findall(r"\]\(([^)]+)\)", path.read_text()):
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            resolved = (path.parent / target.split("#")[0]).resolve()
+            assert resolved.exists() and resolved.is_relative_to(BUNDLE.resolve()), (
+                f"{path.relative_to(BUNDLE)} links to {target!r}, which the sandbox will not "
+                f"contain — the agent is being sent outside the bundle to find it"
+            )
+
+
 def test_the_bundle_defers_to_the_site_document():
     """The skill's job in the doc-present arm is to make the agent *consume* the document."""
     text = (BUNDLE / "SKILL.md").read_text()
