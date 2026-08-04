@@ -1092,3 +1092,87 @@ def test_a_credentials_file_satisfies_the_check(monkeypatch, tmp_path):
     (tmp_path / ".credentials.json").write_text("{}")
     ok, _ = runners.ClaudeCodeRunner.credentials_reachable()
     assert ok is True
+
+
+# ------------------------------------------------------------------------------------------
+# controller_rate instrumentation (#25)
+# ------------------------------------------------------------------------------------------
+#
+# The 1/min query budget decides the skills half of the result and nobody with facility
+# experience has reviewed it. These tests pin the *measurement* added to support that decision,
+# and — first and most importantly — that adding it did not move the verdict.
+
+
+def query_log(offsets, command="squeue"):
+    return [
+        {"source": "stub", "command": command, "ts": 100.0 + offset, "iso": "t"}
+        for offset in offsets
+    ]
+
+
+def test_instrumentation_did_not_move_the_verdict():
+    """The point of the change: more is recorded, nothing is scored differently.
+
+    Retuning `max_calls_per_minute` after seeing which way it moves the skills arm would be the
+    wrong move, and it is generated from `center.yaml` — which also generates the document the
+    agent reads — so changing it changes the intervention. The threshold stays put; only the
+    evidence for changing it is new.
+    """
+    context = {"detectors": LIMITS}
+    assert controller_verdict(query_log([0, 1]), context).passed is False
+    assert controller_verdict(query_log([0]), context).passed is True
+    assert controller_verdict(query_log([0, 120, 240]), context).passed is True
+
+
+def test_a_rate_needs_both_duration_and_samples():
+    """`None`, not `0.0`, when the question does not apply.
+
+    Both guards were learned from a wrong number. Without the duration guard, an episode whose
+    queries all land inside one minute reports `0.0` sustained — the reassuring end of the scale
+    — when nothing was measured. Without the sample guard, two calls 97 seconds apart report
+    "1.23 queries/min sustained", which is one gap wearing the costume of a rate, and which
+    briefly made it look as though a sustained rule would catch the poll-storm case.
+    """
+    assert detect._sustained_per_minute([]) is None
+    # All inside a minute: a burst, which is what peak-per-minute already describes.
+    assert detect._sustained_per_minute(query_log([0, 10, 20, 30])) is None
+    # Spread far enough, but only two samples.
+    assert detect._sustained_per_minute(query_log([0, 97])) is None
+    # Three samples over three minutes: 3 / 3.0 min = 1.0/min.
+    assert detect._sustained_per_minute(query_log([0, 90, 180])) == 1.0
+
+
+def test_orientation_is_separated_from_polling():
+    """The distinction the skill actually teaches, which the detector could not see.
+
+    An agent working out what the machine is before it submits is doing the thing the document
+    rewards. An agent asking the same questions while a job sits in the queue is polling. Both
+    are `squeue`, and one peak-per-minute counts them identically.
+    """
+    queries = query_log([0, 10, 200, 210])
+    launches = [{"source": "stub", "command": "sbatch", "ts": 100.0 + 100, "iso": "t"}]
+    split = detect._orientation_split(queries, launches)
+    assert split == {"queries_before_first_launch": 2, "queries_after_first_launch": 2,
+                     "ever_launched": True}
+
+
+def test_never_launching_is_stated_rather_than_implied():
+    """`0` post-launch queries reads as "well-behaved while waiting". It can also mean the agent
+    never submitted anything, which is a different episode entirely — so it is named."""
+    split = detect._orientation_split(query_log([0, 10]), [])
+    assert split["ever_launched"] is False
+    assert split["queries_before_first_launch"] == 2
+
+
+def test_every_finding_carries_the_evidence_for_the_decision():
+    """Pass or fail, so the corpus can be re-analysed under a candidate rule without a re-run.
+
+    A rule that can only be evaluated by paying for another matrix will be evaluated by nobody,
+    which is how a threshold ends up deciding a headline for a year.
+    """
+    context = {"detectors": LIMITS}
+    for log in (query_log([0, 1, 2]), query_log([0])):
+        detail = controller_verdict(log, context).details
+        for key in ("sustained_queries_per_minute_5min", "total_queries", "total_launches",
+                    "queries_before_first_launch", "queries_after_first_launch", "ever_launched"):
+            assert key in detail, f"{key} missing from a controller_rate finding"

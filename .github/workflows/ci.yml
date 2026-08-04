@@ -17,6 +17,13 @@ jobs:
       # floor/ceiling calibration bounds are already asserted inside test_harness.py. These are the
       # same commands CLAUDE.md documents, so CI and the docs cannot drift.
       - run: uv run --with pyyaml --with pytest pytest tests -q
+      # The Docker substrate's own contract tests, which were not run here.
+      #
+      # They are not about Docker being up — they assert that the mock cluster and the document
+      # the agent reads describe the same machine, and they run without a container. Leaving them
+      # out is how `agents/INSTRUCTIONS.md` drifted from `center.yaml` for the whole pilot while
+      # CI stayed green (#29). A substrate contract that nothing runs is a comment.
+      - run: uv run --with pyyaml --with pytest pytest src/mock_cluster -q
       - run: uv run --with pyyaml src/hpcbench/validate_cases.py
       - run: uv run --with pyyaml src/hpcbench/render.py check
       - run: uv run --with ruff ruff check src tests

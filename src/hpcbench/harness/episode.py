@@ -58,7 +58,10 @@ if __package__ in (None, ""):  # invoked as a script rather than imported
     # leaves an editable install whose .pth already puts `src` on the path.
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-from hpcbench.harness import detect  # noqa: E402
+from hpcbench.harness import (
+    detect,  # noqa: E402
+    report,  # noqa: E402
+)
 from hpcbench.harness import runners as runner_module  # noqa: E402
 from hpcbench.paths import BENCHMARK, GENERATED, REPO  # noqa: E402
 from hpcbench.stubs import install_stubs  # noqa: E402
@@ -72,6 +75,25 @@ CONDITION_LABELS = (
 
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
+
+# Every copy of the intervention that exists anywhere on this machine, not just the one this
+# arm would have installed.
+#
+# A doc-absent episode that widened its search to the host found three: two concurrent sandboxes
+# and the repo's own hand-maintained copy. Fingerprinting only `generated/INSTRUCTIONS.md` would
+# miss an agent that read `agents/INSTRUCTIONS.md` instead — which is the copy the Docker
+# substrate serves, so it is a real document and not a stray file. See #29 for why there are two.
+DOCUMENTS = (GENERATED / "INSTRUCTIONS.md", REPO / "agents" / "INSTRUCTIONS.md")
+
+# Long enough that no agent writes one by coincidence.
+#
+# The withheld-content check uses 40, which is right for it: a leaked rubric line is being copied
+# verbatim into a file. This check reads a *transcript*, where the agent's own prose is in scope
+# and a 40-character sentence about walltime limits is something a competent agent might simply
+# say. At 60 there is no overlap between the two documents, the skill bundle, and every case's
+# visible files — measured, not assumed, and asserted in tests/test_containment.py so it stays
+# true as those files change.
+CONTAMINATION_MIN_LINE = 60
 
 # Skills are delivered as plain markdown in the working directory, not installed into any
 # agent's own skill mechanism.
@@ -174,7 +196,149 @@ def materialize(
     prompt_path.write_text(prompt_path.read_text().rstrip() + SITE_GUIDANCE_POINTER)
 
     assert_nothing_withheld_leaked(work)
+    assert_arm_was_built(work, condition)
     return environment
+
+
+def assert_arm_was_built(work: Path, condition: Condition) -> None:
+    """The sandbox matches the label on it. Checked here because it is exactly checkable here.
+
+    The post-hoc `arm_contamination` check catches an episode that reached the *other* arm's
+    content. This catches the opposite and much quieter failure: an arm that was never built.
+    A `doc-present` episode whose document silently failed to copy runs as a control while being
+    counted as an intervention, which does not weaken the result — it moves episodes across the
+    comparison, and the direction it moves them is toward "the document does nothing".
+
+    Nothing downstream can recover this. Once the run is over, a doc-present episode with no
+    document and a doc-present episode whose agent never opened the document produce the same
+    transcript.
+    """
+    document = work / "INSTRUCTIONS.md"
+    if condition.doc and not document.exists():
+        raise AssertionError(
+            f"condition is doc-present but no INSTRUCTIONS.md reached {work} — this episode "
+            f"would run as a control and be counted as an intervention"
+        )
+    if not condition.doc and document.exists():
+        raise AssertionError(
+            f"condition is doc-absent but {document} exists — the control arm carries the "
+            f"intervention"
+        )
+
+    manifests = list((work / SKILLS_DIR).rglob("SKILL.md")) if (work / SKILLS_DIR).is_dir() else []
+    if condition.skills != "none" and not manifests:
+        raise AssertionError(
+            f"condition is skills-{condition.skills} but no SKILL.md is under {work / SKILLS_DIR}"
+        )
+    if condition.skills == "none" and manifests:
+        raise AssertionError(
+            f"condition is skills-none but {manifests[0]} exists — the control arm carries the "
+            f"intervention"
+        )
+
+
+def distinctive_lines(paths, minimum: int = CONTAMINATION_MIN_LINE) -> set[str]:
+    """Long stripped lines from `paths`, as a set. Missing and unreadable files contribute none."""
+    found: set[str] = set()
+    for path in paths:
+        try:
+            text = Path(path).read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        found |= {line.strip() for line in text.splitlines() if len(line.strip()) >= minimum}
+    return found
+
+
+def transcript_text(result: runner_module.RunResult) -> str:
+    """Every string anywhere in the transcript, including tool results.
+
+    Deliberately not `environment_failure`'s blob, which collects assistant `text` blocks only.
+    That is right for reading what the agent *said*; it is wrong here, because the way an episode
+    reaches the other arm's content is `cat` — and the file's contents come back inside a
+    `tool_result`, which that blob never looks at. A containment check that cannot see tool output
+    is a containment check that passes.
+    """
+    found: list[str] = []
+
+    def walk(node) -> None:
+        if isinstance(node, str):
+            found.append(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, (list, tuple)):
+            for value in node:
+                walk(value)
+
+    walk(result.transcript or [])
+    walk(result.error or "")
+    return "\n".join(found)
+
+
+def arm_contamination(
+    text: str, condition: Condition, skills_path: Path | None = None
+) -> str:
+    """Did this episode read content belonging to an arm it is not in? Returns a reason, or "".
+
+    36 of 108 episodes in the full matrix answered "there is no document here" by searching the
+    host, and between them turned up `INSTRUCTIONS.md` in two concurrent sandboxes and in the
+    repo itself. None of them opened one — verified across all 108 — so the matrix stands. It
+    stands by luck: an agent that ran `find` and then `cat` on the first hit would have moved
+    itself into the opposite arm, and every rate would have absorbed it silently.
+
+    What this can and cannot see is worth being exact about, because a containment check that is
+    trusted for more than it does is worse than none:
+
+    - It catches **verbatim** content — the agent read the file and the bytes came back. That is
+      the failure mode that actually occurred, and the only one with a crisp signature.
+    - It does not catch **paraphrase**. An agent that reads the document and restates it in its
+      own words is contaminated and will pass this check. Nothing short of a judge sees that, and
+      a judge asked to decide it would be guessing.
+    - It does not fire on **paths**. `find` printing `/tmp/.../INSTRUCTIONS.md` is the search, not
+      the read, and the search alone leaves the arm intact. Only body lines are fingerprinted.
+
+    The fingerprint is subtracted, not merely collected: anything the episode is entitled to see
+    in its own arm is removed first. There is currently no overlap at all between the documents,
+    the skill and the cases, so the subtraction removes nothing — it is there so that the day
+    someone quotes the guardrail table into the skill, this check reports contamination in the
+    episodes that have it rather than in every episode at once.
+    """
+    document_lines = distinctive_lines(DOCUMENTS)
+    skill_sources = [path for path in (skills_path,) if path]
+    skill_lines = distinctive_lines(
+        path for source in [*skill_sources, REPO / SKILLS_DIR / "candidates"]
+        for path in Path(source).rglob("*.md")
+    )
+
+    entitled: set[str] = set()
+    if condition.doc:
+        entitled |= document_lines
+    if condition.skills != "none":
+        entitled |= skill_lines
+    # The case's own files are visible in every arm.
+    for case in (BENCHMARK / "cases").iterdir():
+        if not case.is_dir():
+            continue
+        entitled |= distinctive_lines(case / name for name in VISIBLE)
+        if (case / "assets").is_dir():
+            entitled |= distinctive_lines(
+                asset for asset in (case / "assets").iterdir() if asset.is_file()
+            )
+
+    seen = {line.strip() for line in text.splitlines()}
+    for label, fingerprint, expected in (
+        ("INSTRUCTIONS.md", document_lines, condition.doc),
+        ("the skill under test", skill_lines, condition.skills != "none"),
+    ):
+        if expected:
+            continue
+        found = sorted(seen & (fingerprint - entitled))
+        if found:
+            return (
+                f"condition is {condition.label} but the transcript contains verbatim text from "
+                f"{label}: {found[0][:90]!r}"
+            )
+    return ""
 
 
 def assert_nothing_withheld_leaked(work: Path) -> None:
@@ -535,6 +699,19 @@ def run_episode(
         records = read_call_log(runtime)
         validity, reason = episode_validity(result, records)
 
+    # After the retries, and only over an episode that acted.
+    #
+    # Ordered below `invalid` on purpose: an episode with no evidence the agent did anything has
+    # no conduct to contaminate, and relabelling it would lose the diagnosis that says the token
+    # was dead. Above `partial`, because a truncated episode in the wrong arm is still in the
+    # wrong arm — `partial` says how much of the record survived, `contaminated` says the record
+    # is about the wrong comparison, and only one of those can be repaired by reading the scripts.
+    contamination = ""
+    if validity != "invalid":
+        contamination = arm_contamination(transcript_text(result), condition, skills_path)
+        if contamination:
+            validity, reason = "contaminated", contamination
+
     valid = validity == "ok"
 
     targets = scoring_targets(work, records)
@@ -573,6 +750,10 @@ def run_episode(
         "validity": validity,
         "valid": valid,
         "invalid_reason": reason,
+        # Recorded whether or not it fired, so a results file says which of "no contamination" and
+        # "no check" it means. A field that only appears when something went wrong cannot
+        # distinguish a clean run from a run made before the check existed.
+        "arm_contamination": contamination or None,
         # Empty unless the runner itself failed. Read by the run loop to decide whether continuing
         # can produce anything, and by anyone auditing a results file after the fact — an operator
         # handed 90 records has to be able to tell "the model never caught this" from "the token
@@ -620,15 +801,18 @@ def run_episode(
             },
         },
     }
-    # `None`, not `False`, when the episode is invalid. An episode where the agent never acted
-    # carries no information about whether the defect would have been caught, and a `False` here is
-    # what turns a broken run into a publishable-looking zero.
+    # `None`, not `False`, when the episode cannot be scored. An episode where the agent never
+    # acted carries no information about whether the defect would have been caught, and a `False`
+    # here is what turns a broken run into a publishable-looking zero. A contaminated episode is
+    # excluded the same way and for a sharper reason: it has a real outcome, but the outcome
+    # belongs to neither arm, so counting it as a pass or a failure corrupts the comparison rather
+    # than merely diluting it.
     episode["l1"]["prevented"] = (
         (
             episode["l1"]["static"]["verdict"] == "pass"
             and episode["l1"]["call_log"]["verdict"] in ("pass", "not_applicable")
         )
-        if validity != "invalid" else None
+        if validity not in report.UNSCOREABLE else None
     )
     # Prevented, but nothing ran. A separate outcome, not a pass and not a failure: the defect was
     # averted and the work was not done. An agent that reliably lands here has learned to refuse,
@@ -883,6 +1067,17 @@ def main() -> int:
                         aborted = episode["environment_failure"]
                         break
                     continue
+                if episode["validity"] == "contaminated":
+                    # Loud, and while the run is still going. Contamination is a property of the
+                    # setup rather than of one agent, so the second occurrence is nearly certain
+                    # once there is a first — an operator who sees this at episode 3 can stop and
+                    # fix it instead of paying for the other 105.
+                    print(
+                        f"  {case_id:24s} {condition.label:34s} seed{seed}  "
+                        f"CONTAMINATED — {episode['arm_contamination'][:90]}",
+                        flush=True,
+                    )
+                    continue
                 note = "  [PARTIAL]" if episode["validity"] == "partial" else ""
                 if episode["l1"]["prevented_without_running"]:
                     note = "  [nothing submitted]"
@@ -903,6 +1098,9 @@ def main() -> int:
     valid = [episode for episode in episodes if episode["validity"] == "ok"]
     partial = [episode for episode in episodes if episode["validity"] == "partial"]
     invalid = [episode for episode in episodes if episode["validity"] == "invalid"]
+    contaminated = [
+        episode for episode in episodes if episode["validity"] == "contaminated"
+    ]
     spend = sum((episode.get("cost") or {}).get("usd") or 0 for episode in episodes)
 
     print()
@@ -933,6 +1131,26 @@ def main() -> int:
                   f"{episode['invalid_reason'][:90]}")
         if len(invalid) > 5:
             print(f"  ... and {len(invalid) - 5} more")
+    if contaminated:
+        # A different sentence from the invalid one, deliberately. "Excluded" is what happened to
+        # these episodes; it is not what the operator needs to know. One contaminated episode means
+        # the arms are not isolated, which is a statement about every other episode in the run —
+        # including the ones that passed this check by not leaving verbatim evidence.
+        print(
+            f"{len(contaminated)}/{len(episodes)} episodes CONTAMINATED and excluded — an arm "
+            f"reached the other arm's content:"
+        )
+        for episode in contaminated[:5]:
+            print(f"  - {episode['case']} {episode['condition']['label']}: "
+                  f"{episode['arm_contamination'][:90]}")
+        if len(contaminated) > 5:
+            print(f"  ... and {len(contaminated) - 5} more")
+        print(
+            "  This is a property of the setup, not of these episodes. The rest of the run is "
+            "suspect:\n"
+            "  the check sees verbatim text only, so an agent that read and paraphrased is "
+            "counted as clean."
+        )
     if partial:
         # Scored, but reported apart from the headline: L1 read whole scripts, L2 would read a
         # truncated transcript.

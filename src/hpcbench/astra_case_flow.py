@@ -37,7 +37,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from hpcbench.astra_figures import output_id  # noqa: E402
-from hpcbench.harness.report import endpoint_of  # noqa: E402
+from hpcbench.harness.report import endpoint_of, is_scoreable  # noqa: E402
 from hpcbench.paths import BENCHMARK, CASES  # noqa: E402
 
 PAGES = BENCHMARK / "pages" / "cases"
@@ -74,7 +74,7 @@ def detector_failures(episodes: list[dict], source: str) -> Counter:
 def submitted_nothing(record: dict) -> bool:
     """`report.py`'s own rule, including the exemption, so the two cannot disagree."""
     return (
-        record.get("validity") != "invalid"
+        is_scoreable(record)
         and bool(record.get("evidence"))
         and not record["evidence"].get("workload_submitted")
         and not (record.get("l1") or {}).get("prevented_without_running")

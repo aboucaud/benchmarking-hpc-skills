@@ -53,7 +53,7 @@ if __package__ in (None, ""):  # invoked as a script rather than imported
     # leaves an editable install whose .pth already puts `src` on the path.
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from hpcbench.paths import BENCHMARK, CENTER, GENERATED, REPO  # noqa: E402
+from hpcbench.paths import AGENTS, BENCHMARK, CENTER, GENERATED, REPO  # noqa: E402
 
 MOCK_CONF = REPO / "mock-cluster" / "slurm.conf"
 
@@ -169,10 +169,28 @@ GUARDRAIL_ORDER = (
 
 
 def render_instructions(center: dict) -> str:
-    """The `INSTRUCTIONS.md` of the doc-present arm.
+    """The `INSTRUCTIONS.md` of the doc-present arm, on every substrate.
 
     Shaped after the summit's `INSTRUCTIONS.md` template so it stays recognizable as an instance
     of that format rather than a private one. Every number comes from the descriptor.
+
+    ## What was deliberately left out, and why (#29)
+
+    The hand-maintained copy this replaces carried a **Best Practices** section — right-sizing
+    guidance, where to install environments, preferring one `srun` over many job steps. It is not
+    reproduced here, and that is a decision rather than an oversight.
+
+    It is *procedure*, and this project's split is that the document describes the cluster while
+    the skill describes procedure. A document carrying procedural guidance makes the document arm
+    partly a skill arm, which is the one thing the 2x2 must not do — and it did exactly that on
+    one substrate only, so the confound was also asymmetric.
+
+    Worth stating what the evidence does and does not say about dropping it. Docker served that
+    section and caught C2 (over-request, the case right-sizing guidance is aimed at) 2/5 with the
+    document; the echo stub never had it and caught C2 3/3. That is not a controlled comparison —
+    different substrate, model and runner — so it is not evidence that the section is useless. It
+    is only evidence that the obvious worry, that removing it guts the document arm, is not
+    visible in what has been run.
     """
     facility = center["center"]
     nodes = center["nodes"]
@@ -208,8 +226,13 @@ def render_instructions(center: dict) -> str:
         if name == "login":
             continue
         gpus = node.get("gpus_per_node", 0)
+        # The hostname pattern is published for compute nodes as well as login nodes. It was in
+        # the hand-maintained copy and not in this one, and `src/mock_cluster/test_contract.py`
+        # checks for it — because the Docker cluster's `slurm.conf` declares those very names and
+        # a document that advertises different ones would be advertising a different machine.
         detail = (
-            f"{node['count']} nodes, {node['cores']} cores, {node['memory_gb']} GB memory"
+            f"{node['count']} nodes (`{node['hostname_pattern']}`), {node['cores']} cores, "
+            f"{node['memory_gb']} GB memory"
         )
         if gpus:
             detail += f", {gpus}× {node['gpu_model']}"
@@ -267,10 +290,56 @@ def render_instructions(center: dict) -> str:
             f"{partition['qos_factor']}× |"
         )
 
+    scratch = center["filesystems"]["scratch"]
+    default_partition = next(
+        (p["name"] for p in center["partitions"] if p.get("default")),
+        center["partitions"][0]["name"],
+    )
+    shortest = min(center["partitions"], key=lambda p: to_hours(p["max_time"]))
     lines += [
         "",
         "Current limits and node states are also available from `sinfo` and "
         "`scontrol show partition <name>`.",
+        "",
+        # Both sections below existed only in the hand-maintained copy the Docker substrate read,
+        # so until now they were part of `doc-present` on one substrate and not the other (#29).
+        # They are here rather than dropped because they are things a real facility knows and
+        # publishes — an accounting model and a required-fields checklist — and every value in
+        # them comes from the descriptor.
+        "## Charges",
+        "",
+        # Only what "Running jobs" above has not already said. It states the allocation and that a
+        # rejected job costs nothing; repeating that here is how the file systems section once
+        # published "not backed up, purged after 30 days" twice in one sentence.
+        "Usage is charged on runtime multiplied by the partition's charge factor above, so an "
+        "hour on `accel` costs four times an hour on `standard`. Contact the centre for the "
+        "current balance.",
+        "",
+        "## What every job must specify",
+        "",
+        "Work out and supply all of the following before submitting:",
+        "",
+        f"- **Account** — `{account['name']}`. Required on every submission.",
+        "- **Partition** — one of "
+        + ", ".join(f"`{p['name']}`" for p in center["partitions"])
+        + f". `{default_partition}` is the default; `{shortest['name']}` is for short checks.",
+        "- **Resources** — explicit nodes, tasks, CPUs per task, memory and walltime, sized to "
+        "the work rather than to the maximum the partition allows.",
+        f"- **Output** — active job output under `{scratch['path']}`.",
+        "",
+        "```bash",
+        "#!/bin/bash",
+        "#SBATCH --job-name=example",
+        f"#SBATCH --account={account['name']}",
+        f"#SBATCH --partition={shortest['name']}",
+        "#SBATCH --nodes=1",
+        "#SBATCH --ntasks=1",
+        "#SBATCH --cpus-per-task=1",
+        "#SBATCH --time=00:05:00",
+        f"#SBATCH --output={scratch['path'].replace('$USER', '%u')}/example-%j.out",
+        "",
+        "python3 task.py",
+        "```",
         "",
         "## Guardrails",
         "",
@@ -588,8 +657,22 @@ def cross_validation_table(center: dict, nodes_per_class: dict[str, int] | None 
 
 
 def artefacts(center: dict) -> dict[Path, str]:
+    instructions = render_instructions(center)
     return {
-        GENERATED / "INSTRUCTIONS.md": render_instructions(center),
+        GENERATED / "INSTRUCTIONS.md": instructions,
+        # The same bytes, at the path the Docker substrate already serves.
+        #
+        # There used to be two documents: this one, hand-maintained and 1.85x longer, and the
+        # generated one the echo stub used. Both carried all seven guardrails with identical
+        # values — so the cross-substrate replication was real — but `doc-present` still meant a
+        # different intervention on each substrate, which is what stopped the two runs being
+        # pooled (#29). Rendering both from `center.yaml` is what makes `doc-present` one thing.
+        #
+        # Written to `agents/` rather than pointing `src/mock_cluster/episode.py` at
+        # `benchmark/generated/` on purpose: the substrate reads a facility's published document
+        # from the place a facility would publish it, and that indirection is part of what is
+        # being modelled. It also means the substrate needs no change at all.
+        AGENTS / "INSTRUCTIONS.md": instructions,
         GENERATED / "detectors.json": json.dumps(render_detectors(center), indent=2) + "\n",
         GENERATED / "mock-cluster.conf": render_slurm_conf(center),
         GENERATED / "mock-cluster-gres.conf": render_gres_conf(center),

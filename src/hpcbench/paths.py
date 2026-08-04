@@ -25,3 +25,6 @@ BENCHMARK = REPO / "benchmark"                     # the data half of the split
 CENTER = BENCHMARK / "center.yaml"                 # the single source of truth
 CASES = BENCHMARK / "cases"
 GENERATED = BENCHMARK / "generated"
+# Where a facility publishes its document. Generated from CENTER, same bytes as
+# GENERATED/INSTRUCTIONS.md — the Docker substrate reads it from here (#29).
+AGENTS = REPO / "agents"

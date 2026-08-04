@@ -46,7 +46,7 @@ from pathlib import Path
 # The entry-point bootstrap used by every module here: run by path, with `src` on sys.path.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from hpcbench.harness.report import endpoint_of  # noqa: E402
+from hpcbench.harness.report import endpoint_of, is_scoreable  # noqa: E402
 from hpcbench.paths import BENCHMARK  # noqa: E402
 
 RESULTS = BENCHMARK / "results"
@@ -93,7 +93,7 @@ def rows_from(records: list[dict]) -> list[dict]:
             "judged": sum(1 for e in episodes if "endpoint" in e),
             "fixed_by_accident": sum(1 for v in verdicts if v.get("fixed_by_accident")),
             "regression": sum(1 for v in verdicts if v.get("regression")),
-            "excluded": sum(1 for e in episodes if e["validity"] == "invalid"),
+            "excluded": sum(1 for e in episodes if not is_scoreable(e)),
             # Carried because the harness reports them separately, and for the same reason.
             # `norun` is the inaction failure mode: the defect was averted and the researcher
             # got no science, which is neither a pass nor a failure. `rejected` is scheduler
@@ -101,7 +101,7 @@ def rows_from(records: list[dict]) -> list[dict]:
             # rate quoted without it is quoting the scheduler.
             "norun": sum(
                 1 for e in episodes
-                if e["validity"] != "invalid" and e.get("evidence")
+                if is_scoreable(e) and e.get("evidence")
                 and not e["evidence"].get("workload_submitted")
                 and not e["l1"].get("prevented_without_running")
             ),

@@ -79,6 +79,7 @@ from hpcbench.harness.report import (  # noqa: E402
     CONDITION_ORDER,
     cell_marks,
     endpoint_of,
+    is_scoreable,
 )
 from hpcbench.paths import CASES  # noqa: E402
 
@@ -290,7 +291,7 @@ def cell_stats(group: list[dict]) -> dict:
     nothing_submitted = sum(
         1
         for episode in group
-        if episode.get("validity") != "invalid"
+        if is_scoreable(episode)
         and episode.get("evidence")
         and not episode["evidence"].get("workload_submitted")
     )

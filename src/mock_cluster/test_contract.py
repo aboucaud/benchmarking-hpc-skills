@@ -128,14 +128,38 @@ def test_agent_visible_slurm_resources_are_production_shaped():
     assert base["services"]["c1"]["hostname"] == "scc-c0001"
     assert base["services"]["c2"]["hostname"] == "scc-c0002"
     assert base["services"]["c3"]["hostname"] == "scc-g001"
-    assert "Two nodes named `scc-login[1-2]`" in instructions
-    assert "400 nodes named `scc-c[0001-0400]`" in instructions
-    assert "128 cores, and 256 GB memory" in instructions
-    assert "40 nodes named `scc-g[001-040]`" in instructions
-    assert "64 cores, 512 GB memory" in instructions
-    assert "four NVIDIA A100 80 GB GPUs" in instructions
-    assert "250,000 node-hours" in instructions
+
+    # `agents/INSTRUCTIONS.md` is now generated from `benchmark/center.yaml` (#29) rather than
+    # hand-maintained, so these assert the *facts* this test is about — the document advertises
+    # the production machine, not the two-container one — instead of the wording that used to
+    # carry them. Wording is the renderer's business and will change; the contract is that the
+    # numbers the agent reads match the ones `slurm.conf` declares.
+    #
+    # That the document was hand-maintained is how it drifted from the descriptor in the first
+    # place, and why the echo-stub and Docker substrates spent the whole pilot serving two
+    # different documents under one condition label.
+    center = yaml.safe_load(
+        (BASE_COMPOSE.parent.parent / "benchmark" / "center.yaml").read_text()
+    )
+    # Every node class is named; only the compute classes advertise a shape, because the
+    # document's business with login nodes is that you do not compute on them. Asserting cores
+    # and memory for login too would have passed for the wrong reason — login and `standard`
+    # both have 128 cores, so the login assertion would have been satisfied by the `standard`
+    # line whether or not the document said anything about login at all.
+    for name, node in center["nodes"].items():
+        assert node["hostname_pattern"] in instructions, f"{name} not advertised"
+        if name == "login":
+            continue
+        assert f"{node['count']} nodes (`{node['hostname_pattern']}`), {node['cores']} cores, " \
+               f"{node['memory_gb']} GB memory" in instructions, f"{name} shape not advertised"
+    accel = center["nodes"]["accel"]
+    assert f"{accel['gpus_per_node']}× {accel['gpu_model']}" in instructions
+    assert f"{center['account']['allocation_node_hours']:,} node-hours" in instructions
+
+    # The container shape must never reach the document: an agent that believes it is on a
+    # 2-core machine right-sizes for one, and every resource case would be measuring the mock.
     assert "2 CPU cores and 4 GiB" not in instructions
+    assert "4g" not in instructions
 
 
 def test_client_image_replaces_every_monitored_slurm_path():
