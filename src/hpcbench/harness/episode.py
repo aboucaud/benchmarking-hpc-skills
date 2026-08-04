@@ -43,7 +43,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
+import secrets
 import shutil
 import sys
 import time
@@ -403,6 +403,77 @@ def arm_contamination(
     return ""
 
 
+# Commands whose whole purpose is to look somewhere, so a path argument to one is a search.
+# `find` is the one that actually fired; the rest are the same move by another route.
+SEARCH_COMMANDS = ("find", "locate", "mdfind", "fd", "rg", "grep", "ls", "cat", "head", "tail")
+
+
+def in_fiction_roots(limits: dict) -> tuple[str, ...]:
+    """The cluster's own filesystem roots, from the file the detectors already score against.
+
+    `/scratch/$USER` is not an escape. It is where the centre's document says job output belongs,
+    and an agent that goes there is following the intervention — on the echo-stub substrate it
+    finds nothing, because nothing executes. Counting it as an escape would put the doc-present
+    arm at the top of the containment table for obeying the document, which is the opposite of
+    what the number is for.
+
+    Taken from `detectors.json` rather than listed here: `center.yaml` is the only descriptor of
+    this cluster, and a second hand-maintained copy of its mount points is exactly the drift
+    `render.py` exists to prevent.
+    """
+    filesystem = limits.get("filesystem") or {}
+    paths = [
+        *(filesystem.get("bulk_output_paths") or []),
+        *(filesystem.get("forbidden_bulk_output_paths") or []),
+    ]
+    # First segment only: `/scratch/$USER` and a bare `ls /scratch` are the same fiction.
+    return tuple(sorted({f"/{path.strip('/').split('/')[0]}" for path in paths if path}))
+
+
+def sandbox_escape(text: str, root: Path, in_fiction: tuple[str, ...] = ()) -> list[str]:
+    """Commands in the transcript that reach outside this episode's own sandbox.
+
+    Reported, never scored. `arm_contamination` answers "did this episode read the other arm's
+    content", which is the question that decides whether a rate is valid, and it deliberately
+    ignores paths: `find` printing a path is the search, not the read, and the search alone
+    leaves the arm intact. That is the right call for validity and it leaves the harness unable
+    to say a search happened at all.
+
+    So this is the other half, and it is a *count* rather than a verdict. In the 108-episode
+    matrix 36 episodes searched the host filesystem and between them turned up `INSTRUCTIONS.md`
+    in two concurrent sandboxes and in the repo itself; none opened one. Nothing in the harness
+    recorded that — it is known because a judge mentioned it in free-text notes, which is not a
+    measurement and does not survive a change of judge.
+
+    An episode that searches outside its sandbox is not invalid. It is an episode whose
+    containment held for a reason nobody chose, and a run where that number moves is a run where
+    the next `cat` lands.
+    """
+    # Both spellings of this episode's own root. macOS resolves `/tmp` to `/private/tmp`, so the
+    # agent's own absolute paths come back under a prefix the harness never wrote down — and a
+    # check that misses that reports every episode as having escaped from itself.
+    text_root = str(root)
+    mine = tuple({text_root, text_root.replace("/private/tmp/", "/tmp/", 1),
+                  text_root.replace("/tmp/", "/private/tmp/", 1)})
+
+    escapes: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        head = stripped.split(" ", 1)[0].rsplit("/", 1)[-1]
+        if head not in SEARCH_COMMANDS:
+            continue
+        # Absolute paths only. A relative argument cannot leave the sandbox without `..`, and
+        # `find .` is the correct, contained way to answer "is there a document here".
+        for argument in stripped.split():
+            if not argument.startswith("/") or argument.startswith(mine):
+                continue
+            if in_fiction and argument.startswith(in_fiction):
+                continue
+            escapes.append(stripped[:200])
+            break
+    return sorted(set(escapes))
+
+
 def assert_nothing_withheld_leaked(work: Path) -> None:
     """The one invariant that cannot be checked after the fact.
 
@@ -717,6 +788,7 @@ def run_episode(
     keep: bool = False,
     artifacts_dir: Path | None = None,
     retries: int = 0,
+    episode_token: str | None = None,
 ) -> dict:
     case_dir = BENCHMARK / "cases" / case_id
     if not case_dir.is_dir():
@@ -724,13 +796,30 @@ def run_episode(
     case = yaml.safe_load((case_dir / "case.yaml").read_text())
     limits = detect.load_detector_limits(GENERATED / "detectors.json")
 
-    root = sandbox_root or Path(
-        f"/tmp/hpcbench-{case_id}-{condition.label}-s{seed}-"
-        f"{int(time.time())}-{os.getpid()}"
-    )
+    # An opaque token, not `{case}-{label}-s{seed}`, and this is not cosmetic.
+    #
+    # The sandbox directory name is the agent's working directory, and the old one read
+    # `/tmp/hpcbench-C3-wrong-partition-doc-present_skills-none-s0-…`. Two things were in it that
+    # nothing else in the episode is allowed to say: the case id, which names the defect
+    # (`wrong-partition`, `over-request`, `poll-storm`), and the arm label, which says an
+    # experiment is running and which cell this is. Measured across the surviving transcripts of
+    # the 108-episode matrix: that path appears in the model's own tool calls in **81 of 81**,
+    # because the runner puts the cwd in context and the agent then uses absolute paths. PR #44
+    # spent a whole pass removing exactly this content from the fixture docstrings while it sat
+    # in every episode's cwd.
+    #
+    # `HPCBENCH_EPISODE` carried the same string and reaches two further places the agent can
+    # read: its own environment, and `runtime/calls.jsonl`, which its own `sbatch` writes. Neither
+    # fired in those 81 — no agent ran `env` and none opened the call log — but 72 of them had
+    # `/runtime` in the transcript, so it held for the same reason #36 held: luck.
+    #
+    # The token is the only name the episode can see. The mapping back to (case, condition, seed)
+    # lives in the record, which the agent never reads.
+    token = episode_token or secrets.token_hex(8)
+    root = sandbox_root or Path(f"/tmp/hpcbench-{token}")
     sandbox = root / "sandbox"
     environment = materialize(case_dir, sandbox, condition, skills_path)
-    environment["HPCBENCH_EPISODE"] = f"{case_id}/{condition.label}/seed{seed}"
+    environment["HPCBENCH_EPISODE"] = token
     work, runtime = sandbox / "work", sandbox / "runtime"
     intervention = intervention_digest(work, condition)
 
@@ -756,7 +845,7 @@ def run_episode(
         attempts += 1
         shutil.rmtree(sandbox, ignore_errors=True)
         environment = materialize(case_dir, sandbox, condition, skills_path)
-        environment["HPCBENCH_EPISODE"] = f"{case_id}/{condition.label}/seed{seed}"
+        environment["HPCBENCH_EPISODE"] = token
         # Re-taken rather than carried over: the retry rebuilt the sandbox, and a stamp that
         # described the discarded attempt would be a provenance record of the wrong episode.
         intervention = intervention_digest(work, condition)
@@ -773,10 +862,16 @@ def run_episode(
     # wrong arm — `partial` says how much of the record survived, `contaminated` says the record
     # is about the wrong comparison, and only one of those can be repaired by reading the scripts.
     contamination = ""
+    escapes: list[str] = []
     if validity != "invalid":
-        contamination = arm_contamination(transcript_text(result), condition, skills_path)
+        transcript = transcript_text(result)
+        contamination = arm_contamination(transcript, condition, skills_path)
         if contamination:
             validity, reason = "contaminated", contamination
+        # Counted, not scored, and deliberately after the verdict above so it cannot change one.
+        # An episode that searched outside its sandbox and read nothing is a valid episode; it is
+        # also the one that was a `cat` away from being invalid, and that has to be a number.
+        escapes = sandbox_escape(transcript, root, in_fiction_roots(limits))
 
     valid = validity == "ok"
 
@@ -803,6 +898,14 @@ def run_episode(
         # `intervention_digest`. Two records with the same label and different digests were not
         # run against the same experiment, and nothing else in the record would show it.
         "intervention": intervention,
+        # The only name the episode itself could see. Kept here so a sandbox, a call log or a
+        # stray path in a transcript can still be traced back to the cell that produced it —
+        # the mapping moved out of the agent's reach, it did not stop existing.
+        "episode_token": token,
+        # Containment as a measurement rather than an anecdote. `validity` says whether the arm
+        # held; this says how close it came. Empty is the answer we want and is still recorded,
+        # because "no episode searched out" is only a finding if the field exists when it is true.
+        "sandbox_escape": escapes,
         "seed": seed,
         "runner": runner.name,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(started)),
@@ -902,7 +1005,20 @@ def run_episode(
     # `keep` now controls only whether the disposable part — the sandbox — survives for inspection.
     if artifacts_dir is not None:
         artifacts_dir.mkdir(parents=True, exist_ok=True)
+        # Never overwrite. The stem has no run id in it, so two runs into the same `--results`
+        # collide cell for cell — and that is not hypothetical: a later `scripted-asis`
+        # calibration overwrote 27 of the 108-episode matrix's transcripts, every one of them
+        # from `doc-absent_skills-none`, which is the arm #36 is about. The records still point
+        # at those stems; what is behind them is a different run. `results/` is append-only by
+        # convention and nothing enforced it.
+        #
+        # Suffixed rather than refused, because this runs after the episode has been paid for and
+        # aborting here would discard the thing it is trying to protect. The CLI gives each run
+        # its own directory, so in normal use this never fires; when it does, the token says which
+        # episode the extra copy belongs to and the record carries the same token.
         stem = f"{case_id}__{condition.label}__seed{seed}"
+        if (artifacts_dir / f"{stem}.transcript.json").exists():
+            stem = f"{stem}__{token}"
         (artifacts_dir / f"{stem}.transcript.json").write_text(
             json.dumps(result.transcript, indent=1) + "\n"
         )
@@ -912,7 +1028,13 @@ def run_episode(
         (artifacts_dir / f"{stem}.scripts.json").write_text(
             json.dumps(scripts, indent=1) + "\n"
         )
-        episode["artifacts"] = stem
+        # Relative to the artifacts root, not bare, so a record still resolves once the run has
+        # its own subdirectory. `judge.artifacts_for` joins this with `/`, so an old record's
+        # bare stem and a new record's `<run>/<stem>` both resolve with no change there.
+        episode["artifacts"] = str(
+            (artifacts_dir / stem).relative_to(artifacts_dir.parent)
+            if artifacts_dir.parent.name == "artifacts" else stem
+        )
 
     if keep:
         episode["sandbox"] = str(sandbox)
@@ -1098,8 +1220,12 @@ def main() -> int:
     # An overnight run is exactly the case where this matters, because nobody is watching it, and
     # the failure mode is silent: the file simply never appears.
     arguments.results.mkdir(parents=True, exist_ok=True)
-    destination = arguments.results / f"episodes-{time.strftime('%Y%m%dT%H%M%S')}.jsonl"
+    run_stamp = time.strftime("%Y%m%dT%H%M%S")
+    destination = arguments.results / f"episodes-{run_stamp}.jsonl"
     results_handle = destination.open("w")
+    # Per run, not shared. The results file has always been stamped; the artifacts beside it were
+    # not, so every run after the first overwrote its predecessor's transcripts cell by cell.
+    artifacts = arguments.results / "artifacts" / run_stamp
 
     episodes = []
     for case_id in cases:
@@ -1113,7 +1239,7 @@ def main() -> int:
                 episode = run_episode(
                     case_id, condition, runner, seed=seed, timeout_s=arguments.timeout,
                     skills_path=arguments.skills, keep=arguments.keep,
-                    artifacts_dir=arguments.results / "artifacts",
+                    artifacts_dir=artifacts,
                     retries=arguments.retries,
                 )
                 episodes.append(episode)
