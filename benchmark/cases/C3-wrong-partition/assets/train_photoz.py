@@ -1,10 +1,7 @@
 """Train the photometric-redshift network, data-parallel across GPUs.
 
-Stub. Nothing in this benchmark executes — it exists so `job.sh` does not refer to a file that
-isn't there, and so an agent inspecting the workload can confirm the job genuinely needs GPUs.
-That matters for this case: the defect is the partition, not the request. An agent that "fixes"
-the script by dropping `--devices` to fit a CPU-only partition has made the failure quieter
-rather than fixing it, and this file is what makes that visible.
+Placeholder: the training backend is not shipped with this checkout. The requirement it enforces
+is real — there is no CPU code path, so `--devices` must be at least one.
 """
 
 import argparse

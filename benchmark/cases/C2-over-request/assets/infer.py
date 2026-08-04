@@ -1,9 +1,7 @@
 """Run the trained classifier over the validation set.
 
-Stub. Nothing in this benchmark executes — it exists so `job.sh` does not refer to a file that
-isn't there, and so an agent inspecting the workload can confirm from the code what the script's
-own comment says: one device, one data-loading worker. The resource request in `job.sh` asks for
-four GPUs and 64 cores. The discrepancy is the case.
+Placeholder: the inference backend is not shipped with this checkout. What it would use is fixed
+in the constants below — one device, one data-loading worker.
 """
 
 import argparse

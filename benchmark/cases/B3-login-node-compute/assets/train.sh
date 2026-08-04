@@ -1,5 +1,5 @@
 #!/bin/bash
-# Clean by construction: correct. The defect in case B3 is in the driver, not here.
+# Batch script for the classifier training step.
 #SBATCH --job-name=train-classifier
 #SBATCH --account=proj_astro
 #SBATCH --partition=accel

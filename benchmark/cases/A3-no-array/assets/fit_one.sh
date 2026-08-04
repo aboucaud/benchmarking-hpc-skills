@@ -1,6 +1,5 @@
 #!/bin/bash
-# Clean by construction: correct for a single sweep point. The defect in case A3 is in the
-# driver (sweep.sh), which calls this 20 times.
+# One point of the RV sweep. The RV value is $1.
 #SBATCH --job-name=rv-sweep
 #SBATCH --account=proj_astro
 #SBATCH --partition=standard
