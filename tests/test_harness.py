@@ -1172,7 +1172,7 @@ def test_every_finding_carries_the_evidence_for_the_decision():
     """
     context = {"detectors": LIMITS}
     for log in (query_log([0, 1, 2]), query_log([0])):
-        detail = controller_verdict(log, context).detail
+        detail = controller_verdict(log, context).details
         for key in ("sustained_queries_per_minute_5min", "total_queries", "total_launches",
                     "queries_before_first_launch", "queries_after_first_launch", "ever_launched"):
             assert key in detail, f"{key} missing from a controller_rate finding"
