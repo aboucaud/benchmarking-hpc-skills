@@ -418,11 +418,16 @@ def test_every_family_on_the_grid_is_named(tmp_path, unstable_run):
 
 
 def test_unpublishable_evidence_is_announced_not_silently_rendered(tmp_path):
-    """A record can declare itself unfit to leave the project, and this page is the thing that
-    leaves the project. Rendering it quietly is a disclosure, not a measurement error.
+    """An episode whose case nobody has signed off says so, loudly, on the page.
 
     Surfaced rather than dropped: silently omitting the episodes leaves a page that looks
     complete and is not, which is the same lie pointing the other way.
+
+    The band must not claim to be a release control. `publishable_evidence` is computed as
+    `review_status == "signed-off"`, so it knows only that the case design is unreviewed —
+    while the page itself is published to a public URL by `pages.yml`. Wording that called
+    the page "internal" asserted both a property the flag cannot see and a fact about the
+    workflow that was false.
     """
     records = [
         episode("A1-srun-loop", "doc-absent_skills-none", s, prevented=False) for s in range(3)
@@ -430,15 +435,19 @@ def test_unpublishable_evidence_is_announced_not_silently_rendered(tmp_path):
     records[0]["publishable_evidence"] = False
     records[0]["substrate"] = "docker-slurm"
     page = render(tmp_path, records)
-    assert "do not circulate" in page
+    assert "do not quote" in page
     assert "publishable_evidence" in page
+    assert "review_status" in page, "the band does not say what the flag is derived from"
     assert "docker-slurm" in page, "the reader is not told which runner withheld it"
     assert "1/3" in page or "0/3" in page, "the episode was dropped instead of flagged"
+    # The page is published; wording that contradicts the workflow is the defect being fixed.
+    for overclaim in ("do not circulate", "this page is internal", "leaves the project"):
+        assert overclaim not in page, f"the band still claims to be a release control: {overclaim}"
 
 
 def test_a_clean_run_carries_no_disclosure_banner(tmp_path, unstable_run):
     """The banner has to stay rare, or it stops being read."""
-    assert "do not circulate" not in render(tmp_path, unstable_run)
+    assert "do not quote" not in render(tmp_path, unstable_run)
 
 
 # ------------------------------------------------------------------------------------------
