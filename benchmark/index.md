@@ -27,6 +27,12 @@ deliberately separate from it:
 - **Scheduler pushback.** {astra}`findings.scheduler_pushback_dominates`
 - **Inaction.** An agent that edits the script and submits nothing has averted the defect
   and produced no science. Counted as `norun`, and neither a pass nor a failure.
+- **Which experiment it is.** {astra}`outputs.intervention_manifest` carries the content
+  hashes of the document, the skill bundle and the case files these episodes actually ran
+  against, and counts the records that carry none. The arm labels cannot supply this —
+  `doc-present` named two different documents across this project's history — so a rate
+  whose material is unknown and one whose material is pinned must not read alike.
+  {astra}`findings.option_ids_do_not_version_their_material`
 
 ## The experiment
 

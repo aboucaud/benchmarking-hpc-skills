@@ -29,6 +29,10 @@ import sys
 from collections import defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from hpcbench.harness.provenance import audit  # noqa: E402
+
 CONDITION_ORDER = (
     "doc-absent_skills-none", "doc-absent_skills-good",
     "doc-present_skills-none", "doc-present_skills-good",
@@ -421,6 +425,24 @@ def report(episodes: list[dict]) -> str:
             f"${spend + judge_spend:.2f} total."
         )
         lines.append("")
+
+    # ---- which intervention, not just which arm -----------------------------------------
+    #
+    # Above the caveats rather than among them: whether these episodes ran against one experiment
+    # decides whether anything above it is readable. The arm labels cannot answer it — #29 served
+    # two documents under `doc-present` for a whole pilot and every record looked right.
+    provenance = audit(episodes)
+    lines.append("## Which intervention ran")
+    lines.append("")
+    lines += provenance.summary()
+    if provenance.problems:
+        lines.append("")
+        lines.append(
+            "**These episodes did not all run against the same material, so the rates above pool "
+            "more than one experiment.** Read them per intervention or re-run; the labels agree "
+            "and the material does not."
+        )
+    lines.append("")
 
     lines.append("## What this does not measure")
     lines.append("")

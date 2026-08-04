@@ -55,6 +55,27 @@ def _rollup(digests: dict[str, str], prefix: str, exclude: tuple[str, ...] = ())
     return accumulator.hexdigest()
 
 
+def intervention_from_digests(digests: dict[str, str]) -> dict:
+    """The stamp, derived entirely from `evidence.input_sha256`.
+
+    A function rather than an inline literal because this substrate's records predate the stamp
+    but not its inputs: `input_sha256` has been written since PR #22, so the stored records can be
+    given the field after the fact. Back-filling through a second copy of these four expressions
+    would mean the recovered stamps and the live ones could disagree while both looked right,
+    which is the failure mode the stamp exists to make impossible.
+    """
+    return {
+        "document_sha256": digests.get(DOCUMENT_PATH),
+        "skills_sha256": _rollup(digests, SKILLS_PREFIX),
+        "skills_manifests": sorted(
+            name.removeprefix(SKILLS_PREFIX)
+            for name in digests
+            if name.startswith(SKILLS_PREFIX) and name.endswith("SKILL.md")
+        ),
+        "case_files_sha256": _rollup(digests, "", exclude=(DOCUMENT_PATH, SKILLS_PREFIX)),
+    }
+
+
 @dataclass(frozen=True)
 class Condition:
     doc: bool = False
@@ -302,18 +323,7 @@ class DockerEpisode:
             # anything at all. Same field name on both sides so a pooled reader needs no special
             # case; `document_sha256` is a plain content hash, so it is directly comparable across
             # substrates and equal exactly when both are serving the one document #29 asked for.
-            "intervention": {
-                "document_sha256": digests.get(DOCUMENT_PATH),
-                "skills_sha256": _rollup(digests, SKILLS_PREFIX),
-                "skills_manifests": sorted(
-                    name.removeprefix(SKILLS_PREFIX)
-                    for name in digests
-                    if name.startswith(SKILLS_PREFIX) and name.endswith("SKILL.md")
-                ),
-                "case_files_sha256": _rollup(
-                    digests, "", exclude=(DOCUMENT_PATH, SKILLS_PREFIX)
-                ),
-            },
+            "intervention": intervention_from_digests(digests),
             "seed": self.seed,
             "model": self.model,
             "auth_mode": self.auth_mode,

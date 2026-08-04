@@ -31,11 +31,13 @@ REPO = PACKAGE.parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
 from hpcbench.harness import episode as stub_episode  # noqa: E402
+from mock_cluster.backfill import backfill  # noqa: E402
 from mock_cluster.episode import (  # noqa: E402
     DOCUMENT_PATH,
     SKILLS_PREFIX,
     Condition,
     _rollup,
+    intervention_from_digests,
     materialize_condition,
 )
 
@@ -103,3 +105,60 @@ def test_a_roll_up_over_nothing_is_none():
     as "a bundle was installed and it was empty"."""
     assert _rollup({}, SKILLS_PREFIX) is None
     assert _rollup({"job.sh": "abc"}, SKILLS_PREFIX) is None
+
+
+# --- recovering the stamp from records that predate it ------------------------------------------
+
+
+def stored(intervention=None, digests=None, substrate="docker-slurm"):
+    """A record shaped like the 90 already on disk: `input_sha256`, no `intervention`."""
+    record = {"case": "A1-srun-loop", "substrate": substrate, "seed": 0,
+              "condition": {"doc": True, "skills": "none", "label": "doc-present_skills-none"}}
+    if digests is not None:
+        record["evidence"] = {"input_sha256": digests}
+    if intervention is not None:
+        record["intervention"] = intervention
+    return record
+
+
+def test_a_recovered_stamp_equals_the_one_a_live_run_would_write():
+    """The claim the back-fill rests on, and the reason it shares one implementation.
+
+    A recovered stamp that differed from a live one by any amount would be worse than none: both
+    look like provenance, and a reader comparing an old run to a new one would see a change in
+    the experiment where there was only a change in how the number was computed.
+    """
+    files = materialize_condition(CASE, BOTH, SKILL if SKILL.is_dir() else None)
+    digests = {name: hashlib.sha256(content).hexdigest() for name, content in files.items()}
+    assert backfill([stored(digests=digests)])[0][0]["intervention"] == intervention_from_digests(
+        digests
+    )
+
+
+def test_the_backfill_never_overwrites_a_stamp_taken_at_materialization():
+    """A live stamp is the measurement; a recovered one is a derivation of one. Where both exist
+    the measurement wins, or the field stops meaning "what the harness saw"."""
+    original = {"document_sha256": "keep-me"}
+    records, tally = backfill([stored(intervention=original, digests={"job.sh": "abc"})])
+    assert records[0]["intervention"] == original
+    assert tally == {**tally, "already": 1, "stamped": 0}
+
+
+def test_records_with_nothing_to_derive_from_stay_unstamped():
+    """The echo stub's 108 records are this case, permanently: no `input_sha256` was ever written.
+
+    Emitting a stamp of nulls for them would be the worst outcome — it reads as "stamped, and no
+    document was given", which is a false statement about 54 doc-present episodes.
+    """
+    records, tally = backfill([stored(digests=None), stored(digests={}, substrate="echo-stub")])
+    assert all("intervention" not in record for record in records)
+    assert tally["stamped"] == 0
+    assert tally["no_digests"] + tally["wrong_substrate"] == 2
+
+
+def test_the_backfill_returns_new_records_rather_than_mutating():
+    """`results/` is append-only, and a provenance tool that rewrote its own evidence in place
+    would be the one thing in this repo least entitled to."""
+    source = stored(digests={"job.sh": "abc"})
+    backfill([source])
+    assert "intervention" not in source

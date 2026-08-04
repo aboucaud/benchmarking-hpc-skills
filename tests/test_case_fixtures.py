@@ -33,9 +33,23 @@ import pytest
 import yaml
 
 from hpcbench.harness.episode import VISIBLE, WITHHELD
-from hpcbench.paths import BENCHMARK
+from hpcbench.paths import BENCHMARK, REPO
 
 CASES = sorted(path for path in (BENCHMARK / "cases").iterdir() if (path / "case.yaml").exists())
+
+# The other substrate's copy of the same files.
+#
+# `mock_cluster.materialize_condition` copies `assets/` and then calls `files.update(
+# agent_fixture_files(case))`, so where a file exists in both trees the Docker one wins outright.
+# Seven cases are overridden, covering every file the stub's fixture pass rewrote — which means
+# the checks below ran against files no Docker agent ever saw. These were written separately and
+# were already clean, so the leak was stub-only and the Docker results are not implicated; the
+# gap was that nothing said so.
+DOCKER_FIXTURES = REPO / "src" / "mock_cluster" / "fixtures"
+DOCKER_CASES = sorted(
+    path for path in DOCKER_FIXTURES.iterdir()
+    if path.is_dir() and path.name != "qualification"
+)
 
 # Phrases that only make sense if the writer knew this was an experiment. Lowercased before match.
 #
@@ -127,6 +141,45 @@ def test_no_visible_file_quotes_a_remedy_identifier(case_dir):
         text = readable(path).lower()
         found = [identifier for identifier in identifiers if identifier.lower() in text]
         assert not found, f"{path.relative_to(BENCHMARK)} quotes the answer key: {found}"
+
+
+@pytest.mark.parametrize("case_dir", DOCKER_CASES, ids=lambda path: path.name)
+def test_the_docker_substrates_own_fixtures_are_held_to_the_same_rule(case_dir):
+    """Same rule, other substrate. These files replace the ones above, so they are what is read.
+
+    Split from the tests above rather than folded into `visible_files` because the two trees are
+    not the same set: Docker overrides seven cases and inherits the rest, and a helper that
+    silently merged them would stop being able to say which file an agent actually got.
+    """
+    for path in sorted(case_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        text = readable(path).lower()
+        found = [word for word in EXPERIMENT_WORDS + ANSWER_WORDS if word in text]
+        assert not found, f"{path.relative_to(DOCKER_FIXTURES)} describes the experiment: {found}"
+        assert case_dir.name not in readable(path), (
+            f"{path.relative_to(DOCKER_FIXTURES)} names its case"
+        )
+
+
+def test_the_docker_override_covers_what_the_stub_rewrote():
+    """If Docker ever stops shadowing a rewritten file, the stub's version becomes live there.
+
+    Without this the two trees drift apart silently: the override is positional (`dict.update`
+    after the assets are copied), so a file removed from `mock_cluster/fixtures/` does not fail
+    anything — it just quietly starts serving `benchmark/cases/<case>/assets/` to Docker agents
+    instead, and only the case-file digest would ever show it.
+    """
+    for case_dir in DOCKER_CASES:
+        assets = BENCHMARK / "cases" / case_dir.name / "assets"
+        shadowed = {path.name for path in case_dir.rglob("*") if path.is_file()}
+        assert shadowed, f"{case_dir.name} has an empty override directory"
+        if assets.is_dir():
+            inherited = {path.name for path in assets.iterdir() if path.is_file()} - shadowed
+            assert not inherited, (
+                f"{case_dir.name}: Docker overrides some assets but inherits {sorted(inherited)} "
+                f"— those reach a Docker agent from benchmark/cases/, not from this tree"
+            )
 
 
 def test_the_visible_set_is_the_one_the_harness_copies():
