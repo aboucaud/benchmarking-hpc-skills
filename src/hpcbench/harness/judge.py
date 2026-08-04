@@ -202,6 +202,24 @@ REQUIRED_L2_KEYS = (
     "intent_preserved", "verdict",
 )
 
+# Which fields' disagreement voids the verdict, and which is merely recorded.
+#
+# `verdict` and `recognized` were checked from the start. The other four were taken from
+# `readings[0]` with no check at all, and one of them decides the endpoint: `combine()` returns
+# `prevented: False` on any `regression_matched`, deliberately and even against an L1 pass. So a
+# single reading naming a forbidden regression that the other reading did not see was scored as a
+# failure, on the strength of a coin flip, in the one place this benchmark most wants to be
+# believed — the C1 result about repairs that cost more than the defect.
+#
+# The descriptive three are not decisive and are handled differently on purpose. Voiding a whole
+# verdict because two readings named the remedy `job-array` and `array-job` would discard a good
+# episode over a labelling nuance, which is the same selective-discarding hazard as a false
+# contamination: the episodes it eats are the ones where the agent did something worth naming.
+# Where those disagree the field becomes `None` — unknown, which is what it is — and the
+# disagreement is recorded rather than resolved.
+DECISIVE_L2_FIELDS = ("regression_matched",)
+DESCRIPTIVE_L2_FIELDS = ("remedy_matched", "remedy_unlisted", "intent_preserved")
+
 
 def extract_json(text: str) -> dict | None:
     """First JSON object in the reply, fence or no fence."""
@@ -275,38 +293,66 @@ def judge_l2(episode: dict, artifacts: dict, template: str, version: str,
         "readings": readings,
         "cost_usd": round(spend, 4) or None,
     }
+    block.update(collapse_readings(readings))
+    return block
+
+
+def collapse_readings(readings: list[dict]) -> dict:
+    """Collapse independent readings into one L2 block, or refuse to.
+
+    Separate from `judge_l2` so that `--recombine` can re-derive a verdict from readings already on
+    disk. That is not a convenience: it is what makes a change to *how* readings combine testable
+    against runs that have already been paid for. A rule that can only be evaluated by spending
+    another few hundred model calls will be evaluated by nobody.
+    """
+    block: dict = {}
     if not readings:
-        block["verdict"] = "unjudged"
-        block["disagreement"] = None
-        return block
+        return {"verdict": "unjudged", "disagreement": None}
 
     missing = [
         key for key in REQUIRED_L2_KEYS if any(key not in reading for reading in readings)
     ]
     if missing:
-        block["verdict"] = "needs_review"
-        block["disagreement"] = f"judge reply missing keys: {missing}"
-        return block
+        return {"verdict": "needs_review",
+                "disagreement": f"judge reply missing keys: {missing}"}
 
     verdicts = [reading["verdict"] for reading in readings]
     recognitions = [bool(reading["recognized"]) for reading in readings]
 
     if len(set(verdicts)) > 1:
-        block["verdict"] = "needs_review"
-        block["disagreement"] = f"verdicts differ across runs: {verdicts}"
-        return block
+        return {"verdict": "needs_review",
+                "disagreement": f"verdicts differ across runs: {verdicts}"}
     if len(set(recognitions)) > 1:
-        block["verdict"] = "needs_review"
-        block["disagreement"] = f"recognition differs across runs: {recognitions}"
-        return block
+        return {"verdict": "needs_review",
+                "disagreement": f"recognition differs across runs: {recognitions}"}
+
+    for field in DECISIVE_L2_FIELDS:
+        values = [reading.get(field) for reading in readings]
+        if len(set(values)) > 1:
+            # Not resolved by majority, and not by "whoever found something wins". Either rule is a
+            # tie-break dressed as a reading, and this module's own premise is that a tie-break
+            # between two readings is a coin flip. A human decides.
+            return {"verdict": "needs_review",
+                    "disagreement": f"{field} differs across runs: {values}"}
 
     block["verdict"] = verdicts[0]
     block["disagreement"] = None
     block["recognized"] = recognitions[0]
-    block["remedy_matched"] = readings[0].get("remedy_matched")
-    block["remedy_unlisted"] = bool(readings[0].get("remedy_unlisted"))
-    block["regression_matched"] = readings[0].get("regression_matched")
-    block["intent_preserved"] = bool(readings[0].get("intent_preserved"))
+    for field in DECISIVE_L2_FIELDS:
+        block[field] = readings[0].get(field)
+
+    disagreements = {}
+    for field in DESCRIPTIVE_L2_FIELDS:
+        values = [reading.get(field) for reading in readings]
+        normalized = [bool(value) for value in values] if field != "remedy_matched" else values
+        if len(set(normalized)) > 1:
+            block[field] = None
+            disagreements[field] = values
+        else:
+            block[field] = values[0] if field == "remedy_matched" else bool(values[0])
+    # Always present, so a record says which of "the readings agreed" and "nothing compared them"
+    # it means. Every episode judged before this existed carries no such field at all.
+    block["field_disagreements"] = disagreements or None
     return block
 
 
@@ -437,6 +483,16 @@ def main() -> int:
             # The whole point of persisting the readings: a change to how layers combine should not
             # cost another run.
             if episode.get("l2"):
+                # Re-collapse before re-combining. Recombine used to re-run `combine()` over the
+                # already-collapsed block, so a change to how *readings* collapse — such as
+                # checking whether they agree — was invisible to every record on disk, which is
+                # precisely the population you would want to re-check it against.
+                if episode["l2"].get("readings"):
+                    was = episode["l2"].get("verdict")
+                    episode["l2"].update(collapse_readings(episode["l2"]["readings"]))
+                    if episode["l2"]["verdict"] != was:
+                        print(f"  {label} verdict {was} → {episode['l2']['verdict']}: "
+                              f"{episode['l2'].get('disagreement')}", flush=True)
                 episode["endpoint"] = combine(episode)
                 print(f"  {label} → {episode['endpoint']['prevented']} "
                       f"({episode['endpoint']['reason'][:60]})", flush=True)

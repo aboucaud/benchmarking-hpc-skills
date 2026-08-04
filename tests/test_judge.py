@@ -478,3 +478,76 @@ def test_comparison_marks_movement_it_cannot_attribute():
 
     identical = report.compare(baseline, baseline)
     assert "No stable cell moved" in identical
+
+
+# ------------------------------------------------------------------------------------------
+# Reading agreement
+# ------------------------------------------------------------------------------------------
+#
+# `judge_l2` ran two independent readings and checked that they agreed on `verdict` and
+# `recognized` — then took four more fields from `readings[0]` without comparing them at all.
+# One of those four decides the endpoint. Flagged as P1 by @aboucaud on #39.
+
+
+def test_agreeing_readings_collapse_to_one_block():
+    block = judge.collapse_readings([reading(), reading()])
+    assert block["verdict"] == "prevented"
+    assert block["disagreement"] is None
+    assert block["remedy_matched"] == "job-array"
+    assert block["field_disagreements"] is None
+
+
+def test_a_regression_seen_by_one_reading_only_goes_to_review():
+    """The one that mattered, and the reason this is not a tidiness fix.
+
+    `combine()` returns `prevented: False` on any `regression_matched`, deliberately and even
+    against an L1 pass — that rule is what makes the C1 finding (a repair costing two orders of
+    magnitude more than the defect) survive a static-analysis pass. Taking the field from
+    `readings[0]` meant one reading could impose that verdict while the other saw no regression at
+    all, so the project's sharpest published claim rested in part on a coin flip.
+    """
+    readings = [reading(regression_matched="walltime-truncated-blindly"), reading()]
+    block = judge.collapse_readings(readings)
+    assert block["verdict"] == "needs_review"
+    assert "regression_matched differs" in block["disagreement"]
+
+    # And it must not reach the endpoint as a failure.
+    endpoint = judge.combine({"l1": {"prevented": True}, "l2": block})
+    assert endpoint["prevented"] is None
+    assert "review" in endpoint["reason"]
+
+
+def test_readings_agreeing_on_a_regression_still_score_it():
+    """The check must not blunt the rule it protects — agreement is the common case."""
+    block = judge.collapse_readings([
+        reading(regression_matched="walltime-truncated-blindly"),
+        reading(regression_matched="walltime-truncated-blindly"),
+    ])
+    assert block["verdict"] == "prevented"
+    endpoint = judge.combine({"l1": {"prevented": True}, "l2": block})
+    assert endpoint["prevented"] is False
+    assert endpoint["regression"] == "walltime-truncated-blindly"
+
+
+def test_a_descriptive_disagreement_is_recorded_not_resolved():
+    """`None` rather than `readings[0]`, and the verdict survives.
+
+    Reporting `remedy_matched: "X"` when one of two readings said `"Y"` asserts more than is
+    known. Voiding the verdict over it would discard a good episode for a labelling nuance — and
+    the episodes it would eat are the ones where the agent did something worth naming.
+    """
+    block = judge.collapse_readings([
+        reading(remedy_matched="job-array"),
+        reading(remedy_matched="submit-one-job"),
+    ])
+    assert block["verdict"] == "prevented"
+    assert block["remedy_matched"] is None
+    assert block["field_disagreements"]["remedy_matched"] == ["job-array", "submit-one-job"]
+
+
+def test_every_required_field_is_compared():
+    """The defect was a field nobody compared, so the guard is that no field is uncompared."""
+    checked = {"verdict", "recognized", *judge.DECISIVE_L2_FIELDS, *judge.DESCRIPTIVE_L2_FIELDS}
+    assert set(judge.REQUIRED_L2_KEYS) <= checked, (
+        f"{set(judge.REQUIRED_L2_KEYS) - checked} is required of the judge and compared by nobody"
+    )
