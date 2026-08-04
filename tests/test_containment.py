@@ -232,3 +232,76 @@ def test_the_contamination_field_is_always_present():
         REPO / "src" / "hpcbench" / "harness" / "episode.py"
     ).read_text()
     assert '"arm_contamination": contamination or None,' in source
+
+
+# --- which version of the arm was built ------------------------------------------------------
+#
+# `assert_arm_was_built` answers "did the intervention arrive". These cover the question it
+# cannot: *which* intervention. A record that cannot answer that is why #34 (the matrix ran a
+# skill `main` did not have) and #29 (two documents, one label) were both invisible in the data.
+
+def test_the_stamp_distinguishes_the_arms(tmp_path):
+    control = episode_module.intervention_digest(
+        _built(tmp_path / "a", CONTROL), CONTROL
+    )
+    with_document = episode_module.intervention_digest(
+        _built(tmp_path / "b", DOC_ONLY), DOC_ONLY
+    )
+    assert control["document_sha256"] is None
+    assert with_document["document_sha256"]
+    assert control["skills_sha256"] is None
+
+
+def test_an_edited_document_is_a_different_intervention(tmp_path):
+    """The point of the stamp. Same label, same code revision, different experimental material."""
+    work = _built(tmp_path, DOC_ONLY)
+    before = episode_module.intervention_digest(work, DOC_ONLY)
+    document = work / "INSTRUCTIONS.md"
+    document.write_text(document.read_text() + "\nGPU requests must use `accel`.\n")
+    after = episode_module.intervention_digest(work, DOC_ONLY)
+    assert before["document_sha256"] != after["document_sha256"]
+
+
+def test_an_edited_fixture_is_a_different_intervention(tmp_path):
+    """Fixtures are experimental material too — removing 'the defect is the partition, not the
+    request' from a file the agent reads changed what C3 measures. Without this, no record says
+    which side of that change it is on."""
+    work = _built(tmp_path, CONTROL)
+    before = episode_module.intervention_digest(work, CONTROL)
+    (work / "job.sh").write_text((work / "job.sh").read_text() + "\n# and one more thing\n")
+    after = episode_module.intervention_digest(work, CONTROL)
+    assert before["case_files_sha256"] != after["case_files_sha256"]
+    # The document did not move, and a stamp that blurred the two would not localise a change.
+    assert before["document_sha256"] == after["document_sha256"]
+
+
+def test_a_moved_skill_file_is_a_different_intervention(tmp_path):
+    """Content-only hashing would call these two bundles identical. Where a skill puts its content
+    decides whether an agent finds it, which is half of what the skills arm measures."""
+    work = _built(tmp_path, CONTROL)
+    root = work / episode_module.SKILLS_DIR / "hpc-conduct"
+    (root / "docs").mkdir(parents=True)
+    (root / "SKILL.md").write_text("guidance")
+    here = episode_module.intervention_digest(work, CONTROL)
+    (root / "SKILL.md").rename(root / "docs" / "SKILL.md")
+    there = episode_module.intervention_digest(work, CONTROL)
+    assert here["skills_sha256"] != there["skills_sha256"]
+    # Relative to `skills/`, so the bundle name is part of it — that is the level at which two
+    # runs are compared ("which bundle, laid out how"), not "some SKILL.md existed".
+    assert here["skills_manifests"] == ["hpc-conduct/SKILL.md"]
+    assert there["skills_manifests"] == ["hpc-conduct/docs/SKILL.md"]
+
+
+def test_the_stamp_is_taken_before_the_agent_runs():
+    """An agent that rewrites `INSTRUCTIONS.md` is exactly the episode where the starting content
+    matters, and it is the one a post-hoc hash would get wrong."""
+    source = (REPO / "src" / "hpcbench" / "harness" / "episode.py").read_text()
+    stamped = source.index("intervention = intervention_digest(work, condition)")
+    ran = source.index("result = runner.run(work, prompt, environment, timeout_s)")
+    assert stamped < ran
+
+
+def _built(sandbox, condition):
+    """Materialize `sandbox` and return its work directory."""
+    episode_module.materialize(CASE, sandbox, condition)
+    return sandbox / "work"
