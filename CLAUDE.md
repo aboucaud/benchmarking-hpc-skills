@@ -52,6 +52,9 @@ Three rules this layer lives by, each learned the hard way:
 - **A finding never states a count.** Findings render beside live values from whichever run
   is active, so a hard-coded number reads as describing that run. Counts belong in a metric;
   `scope` names the run a finding came from. Both are enforced by tests.
+- **`version:` in `astra.yaml` is the ASTRA spec version, not this document's.** Bumping it
+  because the spec changed makes `astra validate` warn that the installed `astra-spec` is older,
+  which reads as a real incompatibility. Leave it pinned to the spec being validated against.
 
 The active universe is **the first file in `benchmark/universes/` when sorted**, and MySTRA
 takes the universe id from the *file stem* — so `active_full_matrix.yaml` is named to sort
@@ -180,8 +183,29 @@ it can be dropped into an agent's skill set directly.
   physical facts (a GPU requirement, a memory footprint, a per-index cost); drop what the
   experiment thinks about them. `tests/test_case_fixtures.py` enforces this from `case.yaml`, so a
   new case is covered without anyone remembering the rule.
-- **Every record says which intervention it ran.** `episode["intervention"]` carries content
-  hashes of the document, the skill bundle and the case files, taken at materialization time on
-  both substrates under the same field names. The label says which cell; this says which *version*
-  of it. Without it, a matrix run against a skill `main` did not have (#34) and two substrates
-  serving two documents under one label (#29) both looked identical in the data.
+- **Every record says which intervention it ran, and something reads it.**
+  `episode["intervention"]` carries content hashes of the document, the skill bundle and the case
+  files, taken at materialization time on both substrates under the same field names. The label
+  says which cell; this says which *version* of it. Without it, a matrix run against a skill
+  `main` did not have (#34) and two substrates serving two documents under one label (#29) both
+  looked identical in the data. `harness/provenance.py` is the reader: `astra_results.py`
+  **refuses to publish** a pooled rate over records that disagree (`--allow-mixed-intervention`
+  to override, and it still says so), `report.py` prints a "Which intervention ran" section, and
+  `provenance.py … --tree` compares a run against the working tree — advisory, because the answer
+  is usually "re-run rather than re-score" rather than an error.
+  - **An absent stamp is unknown, never agreement.** Records predating the field cannot say what
+    they ran against, and the easy bug is to let `None == None` read as "these match". They are
+    counted as unstamped everywhere. The stub's 108 published records are permanently in this
+    state; the Docker substrate's 90 are recoverable from `evidence.input_sha256`, which is what
+    `src/mock_cluster/backfill.py` does — into a **new file**, never in place.
+  - **`case_files_sha256` is comparable within a substrate only.** The stub appends the
+    site-guidance pointer to `prompt.md` and Docker delivers its pointer in the prompt it sends,
+    so an untouched case stamps two different digests. `document_sha256` and `skills_sha256` are
+    cross-substrate by design — that is what makes #29 a question the data can answer.
+- **Docker serves its own copies of the case assets.** `materialize_condition` copies
+  `benchmark/cases/<case>/assets/` and then `files.update(agent_fixture_files(case))`, so where a
+  name exists in `src/mock_cluster/fixtures/<case>/` that copy wins outright — seven cases,
+  covering every file the fixture pass rewrote. Those were written separately and were already
+  clean, so that leak was stub-only, but the rule now applies to both trees and
+  `tests/test_case_fixtures.py` checks both. Editing one tree does not change what the other
+  substrate's agents read.

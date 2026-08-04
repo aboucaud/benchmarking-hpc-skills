@@ -197,6 +197,9 @@ outputs:
   - id: unstable_cells
     from: reporting.unstable_cells
 
+  - id: intervention_manifest
+    from: reporting.intervention_manifest
+
   - id: calibration_bounds
     from: episode.calibration_bounds
 
@@ -365,6 +368,26 @@ analyses:
             uv run --with pyyaml src/hpcbench/astra_results.py {inputs.judged_records}
             --universe {output}
 
+
+      - id: intervention_manifest
+        type: data
+        label: Which intervention these episodes ran
+        description: |
+          The content hashes the records carry: the document, the skill bundle, and the case
+          files per substrate, with the number of records that carry no stamp at all reported
+          beside them.
+
+          A universe pins which *option* of each decision ran — `document: present`. It cannot
+          say which document that was, and the option id did not change when the document was
+          rewritten. This is the other half of that identity, published beside the rate rather
+          than checked before it and then forgotten. Records predating the field are counted as
+          unstamped rather than treated as agreeing: a rate whose provenance is unknown and a
+          rate whose provenance is confirmed must not read the same on the page.
+        inputs: [judged_records]
+        recipe:
+          command: >-
+            uv run --with pyyaml src/hpcbench/astra_results.py {inputs.judged_records}
+            --universe {output}
 
       - id: case_a1_srun_loop
         type: figure
@@ -634,6 +657,33 @@ findings:
     evidence:
       - id: recipe_commands
         artifact: run_report
+
+  option_ids_do_not_version_their_material:
+    id: option_ids_do_not_version_their_material
+    label: An option id names a choice, not the material that choice delivers
+    claim: |
+      A universe pins `document: present`, and that selection stayed byte-identical across a
+      rewrite that replaced the document every `doc-present` episode read. The same holds for
+      `skills: good` across a change to the bundle, and for the case fixtures, which the spec
+      models as an input and therefore does not version at all. So two runs can select the same
+      options, render the same universe, and be measurements of different experiments — and
+      nothing in the spec, the universe file or the record labels can distinguish them.
+
+      Condition identity is expressed three times here: `Condition.label` in the harness, the
+      option ids in this spec, and now a content digest per episode. Only the third can answer
+      "which version", and it lives outside the spec because the spec has no slot for it. Worth
+      raising with the spec authors: either options carry a content identity, or every runner
+      that cares about reproducibility grows its own, as this one has.
+    created_at: "2026-08-03T00:00:00Z"
+    derived: true
+    scope: |
+      Building the consumer side of the episode stamp against astra-tools 0.2.11. A design
+      observation about the multiverse model, not a measurement — the per-run provenance is in
+      the `intervention_manifest` artifact, which is where the counts belong.
+    tags: [astra-feedback, design, provenance]
+    evidence:
+      - id: stamp_versus_universe
+        artifact: intervention_manifest
 
   dense_factorial_universes:
     id: dense_factorial_universes
