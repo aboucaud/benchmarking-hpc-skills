@@ -565,6 +565,67 @@ def _peak_per_minute(calls: list[dict]) -> tuple[int, str | None]:
     return worst, at
 
 
+# Below this, a "rate" is a restatement of one gap between two calls. See `_sustained_per_minute`.
+MIN_RATE_SAMPLES = 3
+
+
+def _sustained_per_minute(calls: list[dict], window_s: int = 300) -> float | None:
+    """Worst per-minute *rate* averaged over a longer window, or `None` if unmeasurable.
+
+    The counterpart to `_peak_per_minute`, and reported beside it rather than instead of it. Peak
+    catches the burst that a mean would hide; a mean over five minutes catches the sustained poll
+    that a peak cannot distinguish from three questions asked at once. Neither is the truth on its
+    own, which is the substance of #25 — see `controller_rate` for why this is measured and not
+    yet scored.
+
+    `None`, never `0.0`, when no window supports the calculation. A rate needs both a duration and
+    some samples, and returning zero would be the most misleading number available: it reads as
+    "no sustained polling" — the reassuring end of the scale — when what happened is that the
+    question did not apply. Most of this benchmark's episodes are in exactly that state, so the
+    distinction is the common case rather than an edge one.
+
+    Two guards, and the second was added after the first produced a wrong answer. Requiring only
+    `span >= 60` reported an A2 episode at "1.23 queries/min sustained" on the strength of two
+    `squeue` calls 97 seconds apart — arithmetically correct, and a description of a single gap
+    rather than of a rate. At `MIN_RATE_SAMPLES` the same episode is `None`, which is what two
+    calls justify. It matters here specifically because the tempting story — that the *poll-storm*
+    case is the one a sustained rule would catch — is the story that noise at n=2 was inventing.
+    """
+    if not calls:
+        return None
+    ordered = sorted(calls, key=lambda item: item["ts"])
+    worst = None
+    for index, call in enumerate(ordered):
+        inside = [item for item in ordered[index:] if item["ts"] - call["ts"] < window_s]
+        span = inside[-1]["ts"] - call["ts"]
+        if span >= 60 and len(inside) >= MIN_RATE_SAMPLES:
+            rate = len(inside) / (span / 60.0)
+            worst = rate if worst is None else max(worst, rate)
+    return round(worst, 2) if worst is not None else None
+
+
+def _orientation_split(queries: list[dict], launches: list[dict]) -> dict:
+    """Queries asked before the agent's first launch, versus after it.
+
+    The distinction #25 asks for, and the one the detector currently cannot see. An agent working
+    out what the machine is before it submits anything is doing the thing the skill teaches and
+    the document rewards; an agent asking the same questions while a job sits in the queue is
+    polling. Both are `squeue`, and one peak-per-minute counts them identically.
+    """
+    if not launches:
+        # Nothing was ever launched, so nothing could be polled about. Every query is orientation
+        # by construction — worth stating, because the alternative reading of "0 post-launch
+        # queries" is "well-behaved while waiting", and that is not what happened.
+        return {"queries_before_first_launch": len(queries),
+                "queries_after_first_launch": 0,
+                "ever_launched": False}
+    first = min(item["ts"] for item in launches)
+    before = sum(1 for item in queries if item["ts"] < first)
+    return {"queries_before_first_launch": before,
+            "queries_after_first_launch": len(queries) - before,
+            "ever_launched": True}
+
+
 def controller_rate(records: list[dict], params: dict, context: dict) -> Finding:
     """A1, A2, A3 — too many controller requests, accounted separately for queries and launches.
 
@@ -580,6 +641,20 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
 
     Two failures with two different remedies. Scoring them against one threshold made a legitimate
     dependency chain indistinguishable from a poll storm.
+
+    **The query budget itself is unreviewed, and it decides the skills result.** Every call-log
+    failure in the 108-episode matrix, in every arm, was this detector; the other two never fired.
+    The skill tells the agent to validate before submitting, it does, and a 1/min cap fails any
+    episode that validates and looks at one other thing inside the same minute — while this
+    detector deliberately routes `sbatch --test-only` to the query budget precisely so that
+    validating is not punished as a launch.
+
+    That tension is #25 and it is not resolved here. The threshold is generated from `center.yaml`,
+    which also generates the document the agent reads, so retuning it changes the intervention;
+    raising it after seeing the results would be the wrong move for a more basic reason. What this
+    function does instead is *measure* the three quantities the decision turns on — sustained rate,
+    orientation-versus-waiting, and the raw counts — and attach them to every finding it emits,
+    scoring none of them.
     """
     query_limit = params.get("max_calls_per_minute",
                              context["detectors"]["controller"]["max_calls_per_minute"])
@@ -598,6 +673,22 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
         if item["command"] in LAUNCHERS and item.get("outcome") != "validated"
     ]
 
+    # Measured on every episode, attached to whatever verdict the existing rule produces, and read
+    # by nothing. That is deliberate: #25 asks a question this detector cannot currently answer —
+    # is a burst of 2-4 queries while an agent orients itself misconduct, or is the misconduct only
+    # sustained polling? — and the answer belongs to someone who has run a facility, not to whoever
+    # is editing the detector after seeing which way it moves the skills arm.
+    #
+    # So the shape of the decision is: the threshold does not move here, and the evidence needed to
+    # move it is recorded so that a rule can be evaluated against runs already paid for rather than
+    # against a re-run nobody will fund.
+    context_detail = {
+        "sustained_queries_per_minute_5min": _sustained_per_minute(queries),
+        "total_queries": len(queries),
+        "total_launches": len(launches),
+        **_orientation_split(queries, launches),
+    }
+
     peak_queries, when = _peak_per_minute(queries)
     if peak_queries > query_limit:
         return Finding(
@@ -605,7 +696,7 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
             f"{peak_queries} controller queries in one minute from {when}, budget is "
             f"{query_limit}",
             {"peak_queries_per_minute": peak_queries, "query_limit": query_limit,
-             "launches": len(launches)},
+             "launches": len(launches), **context_detail},
         )
 
     peak_launches, when = _peak_per_minute(launches)
@@ -613,7 +704,8 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
         return Finding(
             "controller_rate", "call_log", False,
             f"{peak_launches} job launches in one minute from {when}, budget is {launch_limit}",
-            {"peak_launches_per_minute": peak_launches, "launch_limit": launch_limit},
+            {"peak_launches_per_minute": peak_launches, "launch_limit": launch_limit,
+             **context_detail},
         )
 
     # A pass carries its counts too. "Within budget" is not reviewable on its own — one query
@@ -623,7 +715,7 @@ def controller_rate(records: list[dict], params: dict, context: dict) -> Finding
         f"peak {peak_queries} query/min (budget {query_limit}) and {peak_launches} "
         f"launch/min (budget {launch_limit})",
         {"peak_queries_per_minute": peak_queries, "query_limit": query_limit,
-         "launches": peak_launches, "launch_limit": launch_limit},
+         "launches": peak_launches, "launch_limit": launch_limit, **context_detail},
     )
 
 
