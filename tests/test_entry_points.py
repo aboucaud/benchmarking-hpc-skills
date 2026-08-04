@@ -34,6 +34,8 @@ SRC = REPO / "src"
 ENTRY_POINTS = (
     "hpcbench/render.py",
     "hpcbench/validate_cases.py",
+    "hpcbench/controller_calibration.py",
+    "hpcbench/review_packet.py",
     "hpcbench/harness/episode.py",
     "hpcbench/harness/judge.py",
     "hpcbench/stubs/install_stubs.py",
