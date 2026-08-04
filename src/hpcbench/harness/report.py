@@ -444,6 +444,34 @@ def report(episodes: list[dict]) -> str:
         )
     lines.append("")
 
+    # ---- containment, as a number ---------------------------------------------------------
+    #
+    # `validity` already excludes an episode that *read* the other arm's content. This is the
+    # near miss: an episode that searched outside its own sandbox and found nothing. It is not a
+    # failure and is never scored — it is the distance between "the arms held" and "the arms held
+    # for a reason we chose". Printed even at zero, because "none escaped" is only a finding if
+    # the line is there when it is true.
+    stamped = [e for e in episodes if isinstance(e.get("sandbox_escape"), list)]
+    if stamped:
+        escaped = [e for e in stamped if e["sandbox_escape"]]
+        lines.append("## Did any episode look outside its sandbox?")
+        lines.append("")
+        lines.append(
+            f"**{len(escaped)} of {len(stamped)}** searched a path outside their own sandbox and "
+            f"outside the cluster's own filesystems. None of this is scored: a search is not a "
+            f"read, and `validity` already covers the read. It is reported because the searches "
+            f"are how an episode ends up in the wrong arm, and a run where this number moves is "
+            f"a run where the next one lands."
+        )
+        if escaped:
+            lines.append("")
+            for episode in escaped[:5]:
+                lines.append(
+                    f"- `{episode['case']}` {episode['condition']['label']}: "
+                    f"`{episode['sandbox_escape'][0][:100]}`"
+                )
+        lines.append("")
+
     lines.append("## What this does not measure")
     lines.append("")
     lines.append(

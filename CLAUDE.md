@@ -174,7 +174,29 @@ it can be dropped into an agent's skill set directly.
 - **Skills under test are data.** Candidate skills live in `skills/candidates/<tier>/` and are
   installed into episode sandboxes by the harness. Never put them in `.claude/skills/` — that
   contaminates every episode with the thing being measured. (How a skill is delivered into the
-  sandbox is still open — see `docs/first-run-results.md` Decision 1.)
+  sandbox is still open — see `docs/first-run-results.md` Decision 1.) A bundle must also not
+  **link** to anything it does not ship: the footer used to point at `PROVENANCE.md`, which lives
+  beside the bundle and never reaches the sandbox, and 54 episodes went looking for it.
+  `test_skill_bundle.py` resolves every relative markdown target against the bundle.
+- **An episode must not be able to work out what it is.** The sandbox is `/tmp/hpcbench-<token>`
+  and `HPCBENCH_EPISODE` is that token — never `{case}-{label}-seed{n}`. The old path named the
+  defect (`C3-wrong-partition`) and the cell (`doc-present_skills-none`), the runner puts the cwd
+  in the model's context, and it appears in the model's own tool calls in **81 of the 81**
+  surviving claude-code transcripts of the 108-episode matrix. The same string reached two more
+  places an agent can read — its own environment, and `runtime/calls.jsonl`, which its own
+  `sbatch` writes. Neither fired, but 72 of 81 had `/runtime` in the transcript. The mapping back
+  to the cell lives in `episode["episode_token"]`, which the agent never sees.
+- **Searching outside the sandbox is counted, never scored.** `episode["sandbox_escape"]` records
+  commands with an absolute path outside this episode's root. The cluster's own filesystems are
+  not escapes and come from `detectors.json` (so `center.yaml` stays the only descriptor) — an
+  agent in `/scratch/$USER` is obeying the document. A search is not a read and `validity`
+  already covers the read; this is the distance between "the arms held" and "the arms held for a
+  reason we chose". It is a **floor**: `ls ~` and paraphrase are invisible to it.
+- **Artifacts are per run.** `results/artifacts/<run-stamp>/<case>__<label>__seed<n>.*`. They used
+  to share one directory with no run id, so a later `scripted-asis` calibration silently
+  overwrote 27 of the matrix's transcripts — all of them `doc-absent_skills-none`, the arm #36 is
+  about. `judge.artifacts_for` joins the record's `artifacts` field with `/`, so old bare stems
+  and new `<run>/<stem>` both still resolve.
 - **A case's files may describe the workload, never the experiment.** `job.sh`, `prompt.md` and
   everything under `assets/` are handed to the agent, and they used to carry the answer: three
   cases shipped *"The defect in case A2 lives in the driver, not here"*, and C3's trainer said
