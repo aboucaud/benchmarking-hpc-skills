@@ -42,7 +42,7 @@ Current limits and node states are also available from `sinfo` and `scontrol sho
 
 ## Charges
 
-The allocation is 250,000 node-hours, charged on runtime multiplied by the partition's charge factor above. A rejected submission costs nothing. A job that runs to its walltime and produces nothing costs its full runtime.
+Usage is charged on runtime multiplied by the partition's charge factor above, so an hour on `accel` costs four times an hour on `standard`. Contact the centre for the current balance.
 
 ## What every job must specify
 

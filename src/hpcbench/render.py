@@ -308,9 +308,12 @@ def render_instructions(center: dict) -> str:
         # them comes from the descriptor.
         "## Charges",
         "",
-        f"The allocation is {account['allocation_node_hours']:,} node-hours, charged on runtime "
-        f"multiplied by the partition's charge factor above. A rejected submission costs nothing. "
-        f"A job that runs to its walltime and produces nothing costs its full runtime.",
+        # Only what "Running jobs" above has not already said. It states the allocation and that a
+        # rejected job costs nothing; repeating that here is how the file systems section once
+        # published "not backed up, purged after 30 days" twice in one sentence.
+        "Usage is charged on runtime multiplied by the partition's charge factor above, so an "
+        "hour on `accel` costs four times an hour on `standard`. Contact the centre for the "
+        "current balance.",
         "",
         "## What every job must specify",
         "",
