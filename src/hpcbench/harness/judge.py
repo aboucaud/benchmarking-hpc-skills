@@ -58,6 +58,7 @@ if __package__ in (None, ""):  # invoked as a script rather than imported
     # leaves an editable install whose .pth already puts `src` on the path.
     sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+from hpcbench.harness import report  # noqa: E402
 from hpcbench.paths import BENCHMARK  # noqa: E402
 
 HARNESS = Path(__file__).resolve().parent
@@ -422,9 +423,14 @@ def main() -> int:
             # exists for — did the agent understand, is this a regression dressed as a fix — only
             # arise once the script looks correct.
             continue
-        if episode.get("validity") == "invalid":
-            episode["l2"] = {"verdict": "unjudged", "reason": "episode invalid"}
-            print(f"  {label} skipped — episode invalid", flush=True)
+        if not report.is_scoreable(episode):
+            # Contaminated as well as invalid. Judging a contaminated episode would spend a model
+            # call to produce a verdict about an arm the episode was not in — and, worse, that
+            # verdict would land in `endpoint` where `endpoint_of` prefers it over the `None` that
+            # keeps the episode out of the rates.
+            reason = f"episode {episode['validity']}"
+            episode["l2"] = {"verdict": "unjudged", "reason": reason}
+            print(f"  {label} skipped — {reason}", flush=True)
             continue
 
         if arguments.recombine:

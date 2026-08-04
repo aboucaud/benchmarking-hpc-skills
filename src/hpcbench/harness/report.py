@@ -40,6 +40,22 @@ SYMBOLS = {
     None: " -- ",
 }
 
+# Validity values that put an episode outside every rate, named once so the exclusion cannot be
+# applied in some places and forgotten in others.
+#
+# `invalid` — no evidence the agent acted. Says nothing about whether the defect would have been
+# caught, so counting it as a failure fabricates a numerator.
+# `contaminated` — the agent acted, but reached the other arm's content, so its outcome belongs to
+# neither cell of the comparison.
+#
+# Both are excluded rather than counted, and both are reported by name rather than dropped: a
+# denominator that quietly shrank is the failure this whole module is arranged against.
+UNSCOREABLE = ("invalid", "contaminated")
+
+
+def is_scoreable(episode: dict) -> bool:
+    return episode.get("validity") not in UNSCOREABLE
+
 
 def load(patterns: list[str]) -> list[dict]:
     episodes: list[dict] = []
@@ -97,7 +113,7 @@ def cell_marks(episode: dict) -> list[str]:
     if (episode.get("l1") or {}).get("prevented_without_running"):
         marks.append("idle")
     elif (
-        episode.get("validity") != "invalid"
+        is_scoreable(episode)
         and episode.get("evidence")
         and not episode["evidence"].get("workload_submitted")
     ):
@@ -250,6 +266,31 @@ def report(episodes: list[dict]) -> str:
             )
         lines.append("")
 
+    # Reported apart from `invalid`, and ahead of every number, because the two exclusions mean
+    # opposite things about the run. An invalid episode is a hole in the data. A contaminated one
+    # is a hole in the *design*: something let an arm reach the other arm's content, and the
+    # episodes it happened to catch are the ones where an agent left verbatim evidence. Nobody
+    # should read the remaining rates without knowing the separation leaked at all.
+    contaminated = [
+        episode for episode in episodes if episode.get("validity") == "contaminated"
+    ]
+    if contaminated:
+        lines.append(f"## Contaminated: {len(contaminated)} of {len(episodes)}")
+        lines.append("")
+        lines.append(
+            "These episodes acted, and reached content belonging to an arm they were not in. "
+            "Excluded from every rate: the outcome is real but it belongs to neither cell of "
+            "the comparison. Treat the count as a floor — the check sees verbatim text, so an "
+            "agent that read the other arm's content and paraphrased it is in the rates below."
+        )
+        lines.append("")
+        for episode in contaminated:
+            lines.append(
+                f"- `{episode['case']}` {episode['condition']['label']} — "
+                f"{episode.get('arm_contamination', '')[:140]}"
+            )
+        lines.append("")
+
     # ---- outcomes that are not passes -----------------------------------------------------
     accidental = [
         episode for episode in episodes
@@ -280,7 +321,7 @@ def report(episodes: list[dict]) -> str:
 
     norun = [
         episode for episode in episodes
-        if episode.get("validity") != "invalid" and episode.get("evidence")
+        if is_scoreable(episode) and episode.get("evidence")
         and not episode["evidence"].get("workload_submitted")
         and not (episode.get("l1") or {}).get("prevented_without_running")
     ]
@@ -350,7 +391,7 @@ def report(episodes: list[dict]) -> str:
     ):
         group = [
             episode for episode in episodes
-            if episode.get("validity") != "invalid"
+            if is_scoreable(episode)
             and episode.get("evidence")
             and predicate(episode)
         ]
