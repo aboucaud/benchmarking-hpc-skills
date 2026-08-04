@@ -25,6 +25,35 @@ AGENTS = REPO / "agents"
 VISIBLE = ("job.sh", "prompt.md")
 WITHHELD = ("case.yaml", "reference.sh", "rubric.md")
 
+# Where this substrate puts the two interventions inside the workspace. Named so the provenance
+# roll-up can strip them and key by bundle instead — `hpc-conduct/SKILL.md` on both substrates
+# rather than `.agents/skills/hpc-conduct/SKILL.md` here and `hpc-conduct/SKILL.md` there.
+DOCUMENT_PATH = "agents/INSTRUCTIONS.md"
+SKILLS_PREFIX = ".agents/skills/"
+
+
+def _rollup(digests: dict[str, str], prefix: str, exclude: tuple[str, ...] = ()) -> str | None:
+    """One hash over a subset of `digests`, keyed by path with `prefix` stripped.
+
+    Same construction as `hpcbench.harness.episode._digest`, so the skills roll-up on this
+    substrate and on the echo stub are the same number for the same bundle — which is the
+    comparison #34 needed and could not make.
+    """
+    selected = {
+        name.removeprefix(prefix): digest
+        for name, digest in digests.items()
+        if name.startswith(prefix) and not any(name.startswith(item) for item in exclude)
+    }
+    if not selected:
+        return None
+    accumulator = hashlib.sha256()
+    for name in sorted(selected):
+        accumulator.update(name.encode())
+        accumulator.update(b"\0")
+        accumulator.update(selected[name].encode())
+        accumulator.update(b"\n")
+    return accumulator.hexdigest()
+
 
 @dataclass(frozen=True)
 class Condition:
@@ -250,6 +279,10 @@ class DockerEpisode:
             "partial" if acted else "invalid"
         )
         review = str(case.get("review_status", "unknown"))
+        digests = {
+            name: hashlib.sha256(content).hexdigest()
+            for name, content in sorted(files.items())
+        }
         return {
             "schema_version": 1,
             "substrate": "docker-slurm",
@@ -262,6 +295,24 @@ class DockerEpisode:
                 "doc": self.condition.doc,
                 "skills": self.condition.skills,
                 "label": self.condition.label,
+            },
+            # A roll-up of `evidence.input_sha256`, which this substrate has recorded all along —
+            # its 90 records can say the document they ran against (d2bf9e43…) is not the document
+            # in the tree today (#29 rewrote it), and the echo stub's 108 records cannot say
+            # anything at all. Same field name on both sides so a pooled reader needs no special
+            # case; `document_sha256` is a plain content hash, so it is directly comparable across
+            # substrates and equal exactly when both are serving the one document #29 asked for.
+            "intervention": {
+                "document_sha256": digests.get(DOCUMENT_PATH),
+                "skills_sha256": _rollup(digests, SKILLS_PREFIX),
+                "skills_manifests": sorted(
+                    name.removeprefix(SKILLS_PREFIX)
+                    for name in digests
+                    if name.startswith(SKILLS_PREFIX) and name.endswith("SKILL.md")
+                ),
+                "case_files_sha256": _rollup(
+                    digests, "", exclude=(DOCUMENT_PATH, SKILLS_PREFIX)
+                ),
             },
             "seed": self.seed,
             "model": self.model,
@@ -279,10 +330,7 @@ class DockerEpisode:
                 "transcript": run_result.transcript,
             },
             "evidence": {
-                "input_sha256": {
-                    name: hashlib.sha256(content).hexdigest()
-                    for name, content in sorted(files.items())
-                },
+                "input_sha256": digests,
                 "final_files": artifact_text(final_files),
                 "observer": events,
                 "scored_observer_event_count": len(scored_events),

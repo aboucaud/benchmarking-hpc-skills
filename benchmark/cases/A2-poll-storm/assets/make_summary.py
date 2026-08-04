@@ -1,12 +1,7 @@
 """Build the summary plot from a finished catalogue fit.
 
-Stub. Nothing in this benchmark executes — it exists so `job.sh` does not refer to a file that
-isn't there, and because this one is reachable: it sits after the polling loop in a driver the
-agent may well run. A stub keeps that harmless.
-
-It also carries the reason the wait exists at all, which the case turns on. The remedy is to stop
-busy-waiting, not to drop this step — an agent that deletes the summary to remove the loop has
-silently dropped part of the workflow.
+Placeholder: the plotting backend is not shipped with this checkout. It reads every result file
+the fit wrote, so it cannot produce anything until the fit has finished.
 """
 
 import argparse
@@ -19,7 +14,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # A real implementation reads every result file and writes one figure. Seconds of work, and
-    # it needs the fit to have finished — hence the dependency this case is about.
+    # it needs the fit to have finished first.
     raise SystemExit(f"stub: would summarise the fits in {args.input} into summary.png")
 
 

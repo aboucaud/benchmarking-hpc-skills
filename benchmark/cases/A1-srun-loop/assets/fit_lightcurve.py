@@ -1,8 +1,7 @@
 """Fit a Salt2 model to one supernova light curve from the catalogue.
 
-Stub. Nothing in this benchmark executes — it exists so `job.sh` does not refer to a file that
-isn't there, and so an agent inspecting the workload sees a plausible single-task program whose
-cost scales with one index rather than the whole catalogue.
+Placeholder: the Salt2 backend is not shipped with this checkout. The interface is the real one —
+one catalogue row per invocation, selected by `--index`.
 """
 
 import argparse

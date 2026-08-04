@@ -1,8 +1,7 @@
 """Bin raw exposures into the format the classifier trains on.
 
-Stub. Nothing executes in this benchmark. The docstring and arguments exist so an agent inspecting
-the workload can see the cost — 64 workers, ~200 GB resident — and recognise that this does not
-belong on a shared login node.
+Placeholder: the binning backend is not shipped with this checkout. The arguments and their costs
+are the real ones — at 64 workers this holds roughly 200 GB resident and takes about 40 minutes.
 """
 
 import argparse

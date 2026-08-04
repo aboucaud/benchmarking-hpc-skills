@@ -237,6 +237,68 @@ def assert_arm_was_built(work: Path, condition: Condition) -> None:
         )
 
 
+def _digest(paths: list[Path], root: Path) -> str | None:
+    """One hash over a set of files, keyed by path relative to `root`. `None` if there are none.
+
+    Path-keyed rather than content-only, so moving a file changes the digest: where a skill puts
+    its content is part of what an agent was given.
+    """
+    if not paths:
+        return None
+    accumulator = hashlib.sha256()
+    for path in sorted(paths, key=lambda item: str(item.relative_to(root))):
+        accumulator.update(str(path.relative_to(root)).encode())
+        accumulator.update(b"\0")
+        accumulator.update(hashlib.sha256(path.read_bytes()).hexdigest().encode())
+        accumulator.update(b"\n")
+    return accumulator.hexdigest()
+
+
+def intervention_digest(work: Path, condition: Condition) -> dict:
+    """What the agent was actually given, hashed before the agent can change any of it.
+
+    `assert_arm_was_built` answers "did the intervention arrive" as a boolean. This answers
+    "which intervention", which is the question a results file could not answer at all: records
+    stamp `schema_version` and the code revision, and nothing about the experimental material.
+    That is how the matrix came to be run against a 200-line skill while `main` carried the
+    191-line version (#34) with every record looking identical, and how two substrates ran two
+    different `INSTRUCTIONS.md` for the whole pilot (#29).
+
+    Called after `materialize` and before the runner, deliberately. Hashing afterwards would
+    record whatever the agent edited, and an agent that rewrites `INSTRUCTIONS.md` is exactly the
+    episode where knowing what it started from matters.
+
+    `case_files` covers `job.sh`, `prompt.md` and the assets as materialized — including the
+    appended site-guidance pointer. It is here because the fixtures are experimental material
+    too: the commit that removed "the defect is the partition, not the request" from a file the
+    agent reads changed what C3 measures, and without this stamp no record would say which side
+    of that change it is on.
+    """
+    def under(directory: Path) -> list[Path]:
+        if not directory.is_dir():
+            return []
+        return [path for path in directory.rglob("*") if path.is_file()]
+
+    document = work / "INSTRUCTIONS.md"
+    skills_root = work / SKILLS_DIR
+    case_files = [
+        path for path in work.iterdir()
+        if path.is_file() and path.name != "INSTRUCTIONS.md"
+    ]
+    return {
+        "document_sha256": (
+            hashlib.sha256(document.read_bytes()).hexdigest() if document.exists() else None
+        ),
+        "skills_sha256": _digest(under(skills_root), skills_root),
+        # Readable beside the hash on purpose: a digest tells you two runs differed, not how.
+        "skills_manifests": sorted(
+            str(path.relative_to(skills_root))
+            for path in skills_root.rglob("SKILL.md")
+        ) if skills_root.is_dir() else [],
+        "case_files_sha256": _digest(case_files, work),
+    }
+
+
 def distinctive_lines(paths, minimum: int = CONTAMINATION_MIN_LINE) -> set[str]:
     """Long stripped lines from `paths`, as a set. Missing and unreadable files contribute none."""
     found: set[str] = set()
@@ -670,6 +732,7 @@ def run_episode(
     environment = materialize(case_dir, sandbox, condition, skills_path)
     environment["HPCBENCH_EPISODE"] = f"{case_id}/{condition.label}/seed{seed}"
     work, runtime = sandbox / "work", sandbox / "runtime"
+    intervention = intervention_digest(work, condition)
 
     prompt = (case_dir / "prompt.md").read_text().strip()
     started = time.time()
@@ -694,6 +757,9 @@ def run_episode(
         shutil.rmtree(sandbox, ignore_errors=True)
         environment = materialize(case_dir, sandbox, condition, skills_path)
         environment["HPCBENCH_EPISODE"] = f"{case_id}/{condition.label}/seed{seed}"
+        # Re-taken rather than carried over: the retry rebuilt the sandbox, and a stamp that
+        # described the discarded attempt would be a provenance record of the wrong episode.
+        intervention = intervention_digest(work, condition)
         result = runner.run(work, prompt, environment, timeout_s)
         append_transcript_records(runtime, result)
         records = read_call_log(runtime)
@@ -733,6 +799,10 @@ def run_episode(
         "family": case.get("family"),
         "condition": {"doc": condition.doc, "skills": condition.skills,
                       "label": condition.label},
+        # The label says which cell. This says which *version* of that cell — see
+        # `intervention_digest`. Two records with the same label and different digests were not
+        # run against the same experiment, and nothing else in the record would show it.
+        "intervention": intervention,
         "seed": seed,
         "runner": runner.name,
         "started_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(started)),

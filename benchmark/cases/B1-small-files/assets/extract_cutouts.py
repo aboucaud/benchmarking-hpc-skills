@@ -1,7 +1,7 @@
 """Extract fixed-size cutouts around catalogue sources.
 
-Stub. Nothing executes in this benchmark; this exists so `job.sh` refers to a real file and so an
-agent inspecting the workload can see that the output layout is a choice, not a constraint.
+Placeholder: the cutout backend is not shipped with this checkout. The output layout is selected
+on the command line; the options below are the ones it supports.
 """
 
 import argparse

@@ -1,6 +1,5 @@
 #!/bin/bash
-# Clean by construction: this batch script contains no defect. The defect in case A2 lives in
-# the driver (run_campaign.sh), not here.
+# Batch script for the catalogue fit.
 #SBATCH --job-name=fit-catalogue
 #SBATCH --account=proj_astro
 #SBATCH --partition=standard

@@ -172,3 +172,16 @@ it can be dropped into an agent's skill set directly.
   installed into episode sandboxes by the harness. Never put them in `.claude/skills/` — that
   contaminates every episode with the thing being measured. (How a skill is delivered into the
   sandbox is still open — see `docs/first-run-results.md` Decision 1.)
+- **A case's files may describe the workload, never the experiment.** `job.sh`, `prompt.md` and
+  everything under `assets/` are handed to the agent, and they used to carry the answer: three
+  cases shipped *"The defect in case A2 lives in the driver, not here"*, and C3's trainer said
+  *"the defect is the partition, not the request"* — C3's answer, in the case whose Docker result
+  is the sharpest here, read in 5 of 6 doc-present episodes and 0 of 6 doc-absent ones. Keep the
+  physical facts (a GPU requirement, a memory footprint, a per-index cost); drop what the
+  experiment thinks about them. `tests/test_case_fixtures.py` enforces this from `case.yaml`, so a
+  new case is covered without anyone remembering the rule.
+- **Every record says which intervention it ran.** `episode["intervention"]` carries content
+  hashes of the document, the skill bundle and the case files, taken at materialization time on
+  both substrates under the same field names. The label says which cell; this says which *version*
+  of it. Without it, a matrix run against a skill `main` did not have (#34) and two substrates
+  serving two documents under one label (#29) both looked identical in the data.
