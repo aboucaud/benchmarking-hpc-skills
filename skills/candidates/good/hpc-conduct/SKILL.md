@@ -196,6 +196,6 @@ and what you already tried.
 
 ---
 
-*Derived from [`hpc-session`](https://github.com/HolobiomicsLab/hpc-session) (MIT) — see
-[PROVENANCE.md](PROVENANCE.md) for what was taken, what was removed, and the constraints this
-bundle was written under.*
+*Derived from [`hpc-session`](https://github.com/HolobiomicsLab/hpc-session) (MIT). What was
+taken, what was removed and the constraints this bundle was written under are recorded with the
+bundle's source, not shipped inside it.*

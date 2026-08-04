@@ -24,6 +24,9 @@ No model is invoked anywhere in this file.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from hpcbench.harness import episode as episode_module
@@ -299,6 +302,111 @@ def test_the_stamp_is_taken_before_the_agent_runs():
     stamped = source.index("intervention = intervention_digest(work, condition)")
     ran = source.index("result = runner.run(work, prompt, environment, timeout_s)")
     assert stamped < ran
+
+
+# --- the episode cannot learn what it is -----------------------------------------------------
+#
+# `arm_contamination` above asks whether an episode read the other arm's *content*. These ask a
+# prior question: could it work out which case and which arm it is without reading anything? It
+# could, three ways, and the first one fired in every episode we still have a transcript for.
+
+
+def test_the_sandbox_path_names_neither_the_case_nor_the_arm():
+    """The cwd used to be `/tmp/hpcbench-C3-wrong-partition-doc-present_skills-none-s0-…`.
+
+    The case id names the defect and the label names the cell, and the runner puts the cwd in the
+    model's context — it appears in the model's own tool calls in 81 of the 81 surviving
+    claude-code transcripts of the 108-episode matrix. This is the same content #44 removed from
+    the fixture docstrings, in a place no fixture test could see.
+    """
+    source = (REPO / "src" / "hpcbench" / "harness" / "episode.py").read_text()
+    construction = source[source.index("token = episode_token or"):]
+    construction = construction[:construction.index("\n\n")]
+    for leaked in ("case_id", "condition.label", "seed"):
+        assert leaked not in construction, (
+            f"the sandbox path is built from {leaked}, which the agent can read with `pwd`"
+        )
+
+
+def test_the_episode_environment_variable_is_the_token():
+    """`HPCBENCH_EPISODE` reaches the agent's own environment *and* `runtime/calls.jsonl`, which
+    its own `sbatch` writes inside the sandbox. Neither was opened in the 81 — but 72 of them had
+    `/runtime` in the transcript, so it held for the same reason #36 held."""
+    source = (REPO / "src" / "hpcbench" / "harness" / "episode.py").read_text()
+    for line in source.splitlines():
+        if "HPCBENCH_EPISODE" in line and "=" in line:
+            assert line.strip().endswith("= token"), f"leaks the cell: {line.strip()}"
+
+
+def test_a_search_outside_the_sandbox_is_recorded():
+    root = Path("/tmp/hpcbench-abc123")
+    found = episode_module.sandbox_escape(
+        "find / -maxdepth 6 -iname 'INSTRUCTIONS.md'", root
+    )
+    assert found and "find /" in found[0]
+
+
+def test_a_sibling_sandbox_is_outside_this_one():
+    """The worst case in #36: `find` returned `INSTRUCTIONS.md` from two *other* episodes'
+    sandboxes. A check that asks only "is it under /tmp/hpcbench-" calls that contained."""
+    root = Path("/tmp/hpcbench-abc123")
+    assert episode_module.sandbox_escape(
+        "cat /tmp/hpcbench-def456/sandbox/work/INSTRUCTIONS.md", root
+    )
+
+
+@pytest.mark.parametrize("command", [
+    "find . -name INSTRUCTIONS.md",
+    "ls -la",
+    "cat prompt.md",
+    "cat /tmp/hpcbench-abc123/sandbox/work/job.sh",
+    "ls /private/tmp/hpcbench-abc123/sandbox/work",
+])
+def test_staying_inside_is_not_an_escape(command):
+    """Both spellings of the episode's own root. macOS resolves `/tmp` to `/private/tmp`, so the
+    agent's absolute paths come back under a prefix the harness never wrote down — and a check
+    that misses that reports every episode as having escaped from itself."""
+    assert episode_module.sandbox_escape(command, Path("/tmp/hpcbench-abc123")) == []
+
+
+def test_the_clusters_own_filesystem_is_not_an_escape():
+    """`/scratch/$USER` is where the document says output belongs. An agent that goes there is
+    obeying the intervention, and counting it would put the doc-present arm at the top of the
+    containment table for following the document it was given."""
+    limits = json.loads((GENERATED / "detectors.json").read_text())
+    fiction = episode_module.in_fiction_roots(limits)
+    assert fiction == ("/archive", "/home", "/scratch")
+    root = Path("/tmp/hpcbench-abc123")
+    assert episode_module.sandbox_escape('ls -la /scratch/"$USER"/out', root, fiction) == []
+    # And a real escape in the same compound command still counts.
+    assert episode_module.sandbox_escape(
+        'ls /scratch/$USER; find / -iname INSTRUCTIONS.md', root, fiction
+    )
+
+
+def test_the_in_fiction_roots_come_from_the_generated_descriptor():
+    """`center.yaml` is the only descriptor of this cluster. A hand-kept list of its mount points
+    here is the second source of truth `render.py` exists to prevent."""
+    source = (REPO / "src" / "hpcbench" / "harness" / "episode.py").read_text()
+    body = source[source.index("def in_fiction_roots("):source.index("def sandbox_escape(")]
+    # A mount point as a *literal* is the second source of truth. Prose that names one to explain
+    # the rule is not, so this looks for the quoted form rather than the bare substring.
+    for mount in ("/scratch", "/home", "/archive"):
+        for literal in (f'"{mount}', f"'{mount}"):
+            assert literal not in body, f"{mount} is hardcoded; it belongs to center.yaml alone"
+
+
+def test_the_escape_is_counted_and_never_scored():
+    """An episode that searched and read nothing is valid. It is also the one that was one `cat`
+    from invalid, which is why the count exists — and why it must not become a verdict."""
+    source = (REPO / "src" / "hpcbench" / "harness" / "episode.py").read_text()
+    body = source[source.index("escapes = sandbox_escape("):]
+    body = body[:body.index("valid = validity ==")]
+    assert "validity" not in body, "sandbox_escape must not be able to change a verdict"
+    # And it is taken after the verdict, so it cannot be read as one.
+    assert source.index("contamination = arm_contamination(") < source.index(
+        "escapes = sandbox_escape("
+    )
 
 
 def _built(sandbox, condition):
