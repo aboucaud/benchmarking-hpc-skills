@@ -18,6 +18,10 @@ points and tests add `pyyaml`/`pytest` inline with `--with` (matching the module
 CI runs these same commands, so they and the docs cannot drift:
 
 - `uv run --with pyyaml src/hpcbench/validate_cases.py` — case ↔ center.yaml consistency gate
+- `uv run --with pyyaml src/hpcbench/review_packet.py --run <episodes.judged.jsonl>` — regenerate
+  the per-case review packets in `docs/case-review/` (#10)
+- `uv run --with pyyaml src/hpcbench/controller_calibration.py <episodes.judged.jsonl>` — what the
+  controller-rate threshold decides, over a run already paid for (#25). Reports; changes nothing.
 - `uv run --with pyyaml --with pytest pytest tests -q` — tests
 - `uv run --with pyyaml src/hpcbench/render.py check` — fail if a generated consumer is stale
   (covers `agents/INSTRUCTIONS.md` as well as `benchmark/generated/`)
@@ -156,6 +160,14 @@ it can be dropped into an agent's skill set directly.
 
 ## Working conventions
 
+- **Two decisions belong to a human and neither may be made here.** #10 (is a case realistic?) and
+  #25 (is a burst of scheduler queries misconduct?) need someone who has run a facility. An agent
+  in this repo has every incentive to clear them and no standing to. So `review_status: signed-off`
+  requires `reviewed_by`/`reviewed_on`/`reviewed_questions` and the validator rejects it without
+  them; and `controller_calibration.py` evaluates candidate rules but cannot write — it never
+  touches `center.yaml`, and a test asserts it has no write call in it. Raising
+  `max_calls_per_minute` after seeing which way it moves the skills arm is the single edit #25
+  exists to prevent; if it does change, the matrix is **re-run, not re-scored**.
 - **Nothing here reaches a real cluster.** The harness exercises Slurm through simulator/echo
   shims inside a sandbox, so an agent developing this repo has no reason to call `sbatch`, `ssh`,
   or `hpc-session`. `.claude/settings.json` denies those (and reads of `.ssh`/`*.pem`/TOTP files)

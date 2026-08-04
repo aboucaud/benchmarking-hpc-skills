@@ -104,11 +104,43 @@ joined every scored run. A rule that depends on remembering is a convention, so 
 
 - **`review_status:`** is required in every `case.yaml`, `pending` or `signed-off`. The validator
   fails without it.
+- **A sign-off names someone.** `signed-off` on its own was one word anybody could type, including
+  an agent working in this repo — which has every incentive to clear a blocker and no standing to
+  review a Slurm case. `signed-off` now also requires `reviewed_by`, `reviewed_on` and
+  `reviewed_questions`, and the validator rejects it without them. Attribution on a case that is
+  still `pending` is rejected too: half a sign-off reads as a whole one to anything grepping for a
+  reviewer's name.
 - **`draft: true`** keeps a case out of `episode.py all`. Run it deliberately with
   `--include-drafts`.
 - **Every run prints how many of its cases lack sign-off**, and says the result is a pilot. The
   banner goes quiet only when they are all signed off, so no result can imply a review that did not
   happen.
+
+### Reviewing a case
+
+Read its packet in [`docs/case-review/`](../../docs/case-review/) — one page per case, carrying the
+provenance, the injected defect, the script exactly as the agent receives it, the accepted remedies
+and forbidden regressions, and what the case did when it ran. Generated:
+
+```bash
+uv run --with pyyaml src/hpcbench/review_packet.py --run results/<run>/episodes.judged.jsonl
+```
+
+Then answer the three questions in `case.yaml`:
+
+```yaml
+review_status: signed-off
+reviewed_by: <name or GitHub handle>
+reviewed_on: <YYYY-MM-DD>
+reviewed_questions:
+  defect_realistic: <yes | no | what you would change>
+  rest_of_script_clean: <yes | no | ...>
+  remedies_complete: <yes | no | ...>
+```
+
+Answering *no* is a useful review outcome, not a failure: leave `review_status: pending`, open an
+issue, say what you would change. The packets are committed so review needs no checkout, and each
+stamps the digest of the files it quotes — `tests/test_review_gate.py` fails if one goes stale.
 
 **Current state: none of the nine cases has been signed off.** They still run, because excluding them
 would leave nothing to run. The distinction the `draft` flag draws is between a case the group has
