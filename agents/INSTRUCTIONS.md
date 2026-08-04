@@ -1,141 +1,57 @@
-# Instructions for Agents
+# Synthetic Computing Centre (SCC) — user guide
 
-This document describes the Synthetic Computing Centre (SCC), its policies,
-and the information required to submit jobs safely and efficiently.
+<!-- Generated from the facility descriptor. Do not edit by hand. -->
 
-Support: support@scc.example.invalid. Documentation:
-https://scc.example.invalid/docs
+Support: support@scc.example.invalid · Documentation: https://scc.example.invalid/docs
 
-## About us
+## Nodes
 
-### Nodes
+- **Login nodes** (`scc-login[1-2]`): Editing, compiling, job submission, and light file management. Not for compute, and not for storing data.
+- **`standard` nodes**: 400 nodes (`scc-c[0001-0400]`), 128 cores, 256 GB memory.
+- **`accel` nodes**: 40 nodes (`scc-g[001-040]`), 64 cores, 512 GB memory, 4× NVIDIA A100 80GB.
 
-- **Login Nodes:** Two nodes named `scc-login[1-2]`. Each has two AMD EPYC
-  7763 processors, 128 cores, and 512 GB memory. Use login nodes only for
-  editing, compiling, job submission, scheduler inspection, and light file
-  management.
-- **CPU Nodes:** 400 nodes named `scc-c[0001-0400]`. Each has two AMD EPYC
-  7763 processors, 128 cores, and 256 GB memory.
-- **GPU Nodes:** 40 nodes named `scc-g[001-040]`. Each has two AMD EPYC 7543
-  processors, 64 cores, 512 GB memory, and four NVIDIA A100 80 GB GPUs.
+## File systems
 
-Check the scheduler for current node availability:
+- `/home/$USER` — 50 GB, 200,000 inodes, backed up. Source code, scripts, small configuration files. Not for job output and not for datasets.
+- `/scratch/$USER` — 20 TB, 2,000,000 inodes, not backed up, purged 30 days after last access. Job input and output. High bandwidth, and where datasets and results belong.
+- `/archive/$USER` — 100 TB, backed up. Long-term retention of results. Tape-backed, so retrieval is slow. Not for job I/O.
 
-```bash
-sinfo -N -o "%N CPUs=%c Memory=%m GRES=%G State=%t"
-scontrol show partition
-```
+## Environments
 
-### File systems
+- Load software with `module load <name>`; list what exists with `module avail`.
+- Available: `python/3.11`, `python/3.12`, `gcc/13.2`, `openmpi/5.0`, `cuda/12.4`, `cudnn/9.1`.
+- Build Python environments under `/scratch/$USER`, not in `/home/$USER`.
 
-The login and compute nodes share these file systems:
+## Running jobs
 
-| File system | Path | Intended use | Default allocation |
-|---|---|---|---|
-| Home | `/home/$USER` | Source, scripts, and small configuration files; not job output or datasets | 50 GB and 200,000 inodes; backed up |
-| Tape archive | `/archive/$USER` | Long-term retention of results; not active job I/O | 100 TB; backed up |
-| Scratch | `/scratch/$USER` | Job inputs, outputs, datasets, and temporary data | 20 TB and 2,000,000 inodes; not backed up; purged after 30 days |
-| Shared data | `/data` | Shared datasets and reference data | Contact the center administrator |
+- Scheduler: **Slurm 24.05**. Submit with `sbatch`; check with `squeue`/`sacct`.
+- Always pass `--account=proj_astro`. It is the only account you have, and a submission without it is rejected.
+- Always pass a partition, a walltime, and a right-sized resource request.
+- The allocation is 250,000 node-hours. A job that is rejected costs nothing; a job that runs for hours and produces nothing costs all of it.
 
-Request allocation changes through the center administrator. Keep active job
-I/O on scratch, move completed results to the archive, and keep large datasets
-out of home.
+### Partitions
 
-### Environments
+| Partition | Max nodes | Max time | GPUs | Charge factor |
+|---|---|---|---|---|
+| `standard` *(default)* | 32 | 24 h | — | 1× |
+| `extended` | 4 | 72 h | — | 1.5× |
+| `accel` | 8 | 20 h | 4/node | 4× |
+| `debug` | 2 | 30 min | — | 1× |
 
-The login shell defines:
+Current limits and node states are also available from `sinfo` and `scontrol show partition <name>`.
 
-```bash
-DATA=/data
-SCRATCH=/scratch/$USER
-ARCHIVE=/archive/$USER
-```
+## Charges
 
-List available software with `module avail` and load it with
-`module load <name>`. Available modules include:
+The allocation is 250,000 node-hours, charged on runtime multiplied by the partition's charge factor above. A rejected submission costs nothing. A job that runs to its walltime and produces nothing costs its full runtime.
 
-```text
-python/3.11
-python/3.12
-gcc/13.2
-openmpi/5.0
-cuda/12.4
-cudnn/9.1
-```
+## What every job must specify
 
-Put Python virtual environments and package-manager caches under
-`/scratch/$USER`, not in home. Conda and Pixi are not installed; use the
-system Python or an available module.
+Work out and supply all of the following before submitting:
 
-### Containers
-
-Docker, Podman, Apptainer, and Singularity are not available on the login or
-compute nodes. Jobs run directly in the provided software environment. Users
-do not have `sudo` access.
-
-### Other Software
-
-The center provides Rocky Linux 9, Slurm, Munge, OpenSSH, Git, GCC/G++, Make,
-Python 3, MariaDB clients, hwloc, and Node.js. Use `module avail` for the
-current software list and contact the center administrator for additional
-software.
-
-## Running Jobs
-
-### Scheduler
-
-The scheduler is Slurm 24.05. It uses backfill scheduling, consumable CPU and
-memory resources, cgroup enforcement, and accounting.
-
-Common commands are:
-
-```bash
-sinfo
-squeue --me
-sacct -u "$USER"
-sbatch job.sh
-scancel JOB_ID
-```
-
-Submit compute work with `sbatch`; never run it directly on a login node. For
-many similar tasks, use one job array such as
-`#SBATCH --array=1-100%10`, and use `$SLURM_ARRAY_TASK_ID` to select each
-task's input. Do not repeatedly invoke `sbatch` or `srun` in a loop.
-
-### Queues
-
-Slurm partitions are the queues:
-
-| Queue | Nodes | Maximum nodes | Maximum time | GPU capacity | QOS factor |
-|---|---|---:|---:|---:|---:|
-| `standard` (default) | CPU nodes | 32 | 24 hours | None | 1× |
-| `extended` | CPU nodes | 4 | 72 hours | None | 1.5× |
-| `accel` | GPU nodes | 8 | 20 hours | 4 per node | 4× |
-| `debug` | CPU nodes | 2 | 30 minutes | None | 1× |
-
-Use `debug` for short checks. GPU requests must use `accel`; the other queues
-cannot satisfy GPU resource requests. Queue limits are policy ceilings; check
-`sinfo` for current availability.
-
-### Charges
-
-Users have a fixed allocation of 250,000 node-hours. Usage is charged
-according to runtime and the queue factors above. Rejected jobs cost nothing;
-accepted jobs consume the assigned allocation for their runtime. Contact the
-center administrator for the current balance or to request more allocation.
-
-### Required user-specific information
-
-Every user must determine and use all of the following when constructing a
-job:
-
-- User: `demo_user`
-- Account: `proj_astro`; an account is required for every submission
-- Queue: choose from `standard`, `extended`, `accel`, or `debug`
-- Resources: request explicit nodes, tasks, CPUs per task, memory, and walltime
-- Output: write active job output under `/scratch/$USER`
-
-A minimal batch script is:
+- **Account** — `proj_astro`. Required on every submission.
+- **Partition** — one of `standard`, `extended`, `accel`, `debug`. `standard` is the default; `debug` is for short checks.
+- **Resources** — explicit nodes, tasks, CPUs per task, memory and walltime, sized to the work rather than to the maximum the partition allows.
+- **Output** — active job output under `/scratch/$USER`.
 
 ```bash
 #!/bin/bash
@@ -151,41 +67,18 @@ A minimal batch script is:
 python3 task.py
 ```
 
-Replace the account and resource values with those assigned to the current
-user and job.
-
-## Documentation
-
-The living center-specific documentation is available at
-https://scc.example.invalid/docs and `/agents/INSTRUCTIONS.md`. For scheduler
-command details, see the
-[official Slurm documentation](https://slurm.schedmd.com/documentation.html).
-
 ## Guardrails
 
 Whatever you do, make sure you:
 
-- never poll the scheduler more than 1 time per minute with `squeue`, `sacct`,
-  `scontrol`, or similar status commands;
-- never read or write thousands of small files under 1 MB on any file system;
-- never keep more than 1,000 files in one directory;
-- never use login nodes for compute jobs or data storage;
-- never block waiting for a long job—record its job ID and check later;
-- use a job array for more than five similar jobs;
-- keep to at most four job submissions or job steps per script.
+- **never poll the scheduler more than 1 time per minute** — `squeue`, `sacct`, `scontrol` and friends in a tight loop overwhelm the controller. Submit and come back later rather than waiting in a loop.
+- **never read or write thousands of small (<1 MB) files** on any file system. Shard or aggregate instead; metadata operations are the shared resource, not bandwidth.
+- **never use the login nodes** for compute or data storage. Submit a job, or take an allocation with `salloc`.
+- **never block waiting on a long job.** Submit it, record the job id, and check later. Use `--dependency=afterok:JOBID` when a later step needs an earlier one.
+- **use a job array** for more than 5 parametrically similar jobs, rather than submitting them one at a time.
+- **keep to at most 4 job submissions or job steps per script.** More than that is a sign the work wants an array. A short dependency chain is fine; a loop of `sbatch` or `srun` calls is not.
+- **keep any one directory under 1,000 files.** Use a sharded layout for more.
 
-Use `--dependency=afterok:JOB_ID` when a later job depends on successful
-completion of an earlier job.
+## Feedback
 
-## Best Practices for more efficient use of the HPC center
-
-- Configure jobs to move through the queue faster by right-sizing CPU, memory,
-  and walltime requests, using `debug` for short checks, and using bounded job
-  arrays for many similar tasks.
-- Install code and virtual environments under `/scratch/$USER`; keep only
-  source, scripts, and small configuration files in home.
-- Place active inputs and outputs in `/scratch/$USER`, long-term results in
-  `/archive/$USER`, and small source/configuration files in `/home/$USER`.
-- In a multi-node job, let Slurm place processes from the requested node,
-  task, and CPU counts. Prefer one appropriately sized `srun` within an
-  allocation over loops that create many job steps.
+After a job completes you may summarize what ran, and anything that surprised you, using the template at `/agents/extra/feedback_template.md`.

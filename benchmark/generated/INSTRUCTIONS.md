@@ -7,8 +7,8 @@ Support: support@scc.example.invalid · Documentation: https://scc.example.inval
 ## Nodes
 
 - **Login nodes** (`scc-login[1-2]`): Editing, compiling, job submission, and light file management. Not for compute, and not for storing data.
-- **`standard` nodes**: 400 nodes, 128 cores, 256 GB memory.
-- **`accel` nodes**: 40 nodes, 64 cores, 512 GB memory, 4× NVIDIA A100 80GB.
+- **`standard` nodes**: 400 nodes (`scc-c[0001-0400]`), 128 cores, 256 GB memory.
+- **`accel` nodes**: 40 nodes (`scc-g[001-040]`), 64 cores, 512 GB memory, 4× NVIDIA A100 80GB.
 
 ## File systems
 
@@ -39,6 +39,33 @@ Support: support@scc.example.invalid · Documentation: https://scc.example.inval
 | `debug` | 2 | 30 min | — | 1× |
 
 Current limits and node states are also available from `sinfo` and `scontrol show partition <name>`.
+
+## Charges
+
+The allocation is 250,000 node-hours, charged on runtime multiplied by the partition's charge factor above. A rejected submission costs nothing. A job that runs to its walltime and produces nothing costs its full runtime.
+
+## What every job must specify
+
+Work out and supply all of the following before submitting:
+
+- **Account** — `proj_astro`. Required on every submission.
+- **Partition** — one of `standard`, `extended`, `accel`, `debug`. `standard` is the default; `debug` is for short checks.
+- **Resources** — explicit nodes, tasks, CPUs per task, memory and walltime, sized to the work rather than to the maximum the partition allows.
+- **Output** — active job output under `/scratch/$USER`.
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=example
+#SBATCH --account=proj_astro
+#SBATCH --partition=debug
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --time=00:05:00
+#SBATCH --output=/scratch/%u/example-%j.out
+
+python3 task.py
+```
 
 ## Guardrails
 

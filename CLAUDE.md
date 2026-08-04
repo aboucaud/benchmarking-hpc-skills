@@ -19,7 +19,8 @@ CI runs these same commands, so they and the docs cannot drift:
 
 - `uv run --with pyyaml src/hpcbench/validate_cases.py` — case ↔ center.yaml consistency gate
 - `uv run --with pyyaml --with pytest pytest tests -q` — tests
-- `uv run --with pyyaml src/hpcbench/render.py check` — fail if `benchmark/generated/` is stale
+- `uv run --with pyyaml src/hpcbench/render.py check` — fail if a generated consumer is stale
+  (covers `agents/INSTRUCTIONS.md` as well as `benchmark/generated/`)
 - `uv run --with astra-tools astra validate benchmark/astra.yaml` — the experiment spec
 - `uv run --with astra-tools astra universe check benchmark/universes/<u>.yaml -a benchmark/astra.yaml` — once per universe
 - Calibration (the end-to-end check): `src/hpcbench/harness/episode.py all --runner scripted-asis` must give **0/9** and `--runner scripted-reference` **9/9** prevented
@@ -141,6 +142,14 @@ it can be dropped into an agent's skill set directly.
 - `benchmark/center.yaml` is the single source of truth for the synthetic cluster; the
   files in `benchmark/generated/` are produced by `render.py write` — edit the descriptor,
   never the generated output. `max_time` values must stay quoted (YAML 1.1 sexagesimal).
+- **`agents/INSTRUCTIONS.md` is generated too**, byte-identical to
+  `benchmark/generated/INSTRUCTIONS.md`, and covered by `render.py check`. It is the copy the
+  Docker substrate serves. It used to be hand-maintained and 1.85× longer, so `doc-present`
+  meant a different intervention on each substrate — same seven guardrails, different
+  surrounding document — which is why the two runs could not be pooled (#29). Do not hand-edit
+  it, and do not add prose to the renderer that names a case's answer: an earlier draft told
+  agents that partition names do not describe their hardware, which is C3's answer, and the
+  hand-maintained copy said "GPU requests must use `accel`" outright.
 
 ## Working conventions
 
@@ -152,6 +161,13 @@ it can be dropped into an agent's skill set directly.
 - **Several people work here agentically.** Branch per person (`<user>/<topic>`); stage only the
   files you changed (**never `git add -A`** — someone else's half-finished work may be in the
   tree); verify the live tree before committing; keep `results/` append-only; prefer small PRs.
+- **An episode must stay in its arm, and this is checked.** `validity` has a fourth value,
+  `contaminated`: the agent acted but the transcript contains verbatim text from the other arm's
+  content. It is excluded from every rate via `report.UNSCOREABLE` — never counted as a pass or a
+  failure — and reported by name. The check sees verbatim text only, so its count is a floor;
+  paraphrase is invisible to it. `materialize` separately asserts the arm was *built* as labelled,
+  which is the quieter failure (a doc-present episode with no document runs as a control and is
+  counted as an intervention).
 - **Skills under test are data.** Candidate skills live in `skills/candidates/<tier>/` and are
   installed into episode sandboxes by the harness. Never put them in `.claude/skills/` — that
   contaminates every episode with the thing being measured. (How a skill is delivered into the
