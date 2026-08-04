@@ -53,6 +53,53 @@ REQUIRED_KEYS = (
 )
 
 
+# What a sign-off has to say beyond the word itself.
+#
+# `signed-off` was a bare string, so the gate that decides whether anything in this project counts
+# as evidence was one word anybody could type — including an agent working in this repo, which is
+# the case that matters, because an agent has every incentive to clear a blocker and no standing to
+# review a Slurm case. A claim about who reviewed something is worth exactly as much as the name
+# attached to it.
+#
+# `reviewed_questions` is the three questions in #10, echoed back. Not ceremony: a reviewer who
+# read the script and a reviewer who read the remedy list have done different jobs, and the second
+# is the one that catches the false negatives — a case marked wrong for choosing a different valid
+# fix. Recording which were answered means a partial review reads as partial.
+SIGNOFF_FIELDS = ("reviewed_by", "reviewed_on", "reviewed_questions")
+REVIEW_QUESTIONS = ("defect_realistic", "rest_of_script_clean", "remedies_complete")
+
+
+def check_signoff_is_attributable(name: str, spec: dict) -> list[str]:
+    """A sign-off names a person, a date, and what they actually answered."""
+    if spec.get("review_status") != "signed-off":
+        # And the converse: attribution on a case that is still pending is a half-written
+        # sign-off, which reads as reviewed to anything grepping for a reviewer's name.
+        present = [field for field in SIGNOFF_FIELDS if spec.get(field)]
+        return [
+            f"{name}: carries {present} but review_status is {spec.get('review_status')!r} — "
+            f"either it is signed off or it is not"
+        ] if present else []
+
+    problems = []
+    for field in SIGNOFF_FIELDS:
+        if not spec.get(field):
+            problems.append(
+                f"{name}: review_status is 'signed-off' but {field} is missing — an unattributed "
+                f"sign-off is not a sign-off, and this gate decides whether results are evidence"
+            )
+    answered = spec.get("reviewed_questions") or {}
+    if isinstance(answered, dict):
+        for question in REVIEW_QUESTIONS:
+            if question not in answered:
+                problems.append(
+                    f"{name}: reviewed_questions does not answer {question!r} — see #10; a review "
+                    f"that skipped a question should say so rather than imply it"
+                )
+    elif answered:
+        problems.append(f"{name}: reviewed_questions must be a mapping of question -> answer")
+    return problems
+
+
 def sbatch_directives(text: str) -> dict[str, str]:
     """Extract #SBATCH long options from a script."""
     found: dict[str, str] = {}
@@ -190,6 +237,7 @@ def check_case(directory: Path, partitions: dict[str, dict], account: str,
             f"{name}: review_status is {spec.get('review_status')!r}, expected 'pending' or "
             f"'signed-off' — the gate is a rule, so every case has to state where it stands"
         )
+    problems += check_signoff_is_attributable(name, spec)
 
     detection = spec.get("detection") or {}
     declared = sorted(set(detection) & {"static", "call_log"})
