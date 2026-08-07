@@ -1,0 +1,150 @@
+# Routing probes: the sentence a user would type, and which skill should load for it.
+#
+# Stage 0 of the skill forge (#48). These are NOT cases. No job.sh, no assets, no defect, nothing
+# executable — `tests/test_probes.py` enforces that key by key. Dropping simulation from Phase A is
+# what makes a flat file of sentences sufficient: a runnable development set would be case-shaped,
+# and would then have to be fenced off from `episode.py all`, `validate_cases.py` and the review
+# gate. A sentence has none of that surface.
+#
+# In production the agent runtime selects a skill by matching a task against each bundle's
+# `description:` frontmatter. These probes are how that selection is measured, offline and free,
+# before any episode runs.
+#
+# `holdout` is SEALED. It is never shown to the synthesis stage or to the critique loop, and is
+# scored once after a bundle reaches `clean`. It is the only Phase A number the loop could not have
+# optimised against (#48, F4).
+#
+# Written to be domain-diverse on purpose. The nine misuse cases are uniformly astronomy and phrased
+# as "run this script on the cluster"; probes drawn from the same well would share vocabulary with
+# them and would tune a description to one field. `tests/test_probe_distance.py` bounds the overlap
+# with a number, but variety is what makes the number easy to satisfy honestly.
+#
+# `data_movement` carries no probes: it is `measured: false` in archetypes.yaml, so no skill in the
+# set would be the right answer for one.
+#
+# STATUS: machine-authored, not reviewed by anyone with sysadmin experience. Development
+# scaffolding, never evidence.
+
+visible:
+  - id: serial-v1
+    job_type: serial_cpu
+    text: >-
+      I have a Python script that fits a kinetic model to one measurement file. It takes about
+      twenty minutes and uses a single core. What is the right way to run that here rather than
+      on the machine I log into?
+
+  - id: serial-v2
+    job_type: serial_cpu
+    text: >-
+      I need to convert one very large NetCDF file into another format. It is a single process
+      but it wants a lot of memory. How do I ask for that?
+
+  - id: serial-v3
+    job_type: serial_cpu
+    text: >-
+      A colleague gave me a compiled binary that reads one input and writes one output. It is
+      threaded with OpenMP. How do I request cores so the threads actually have somewhere to run?
+
+  - id: gpu-v1
+    job_type: gpu_train
+    text: >-
+      I am fine-tuning a language model on our annotated corpus and I would like to use more than
+      one accelerator on a node. How do I request them and make sure the training script sees all
+      of them?
+
+  - id: gpu-v2
+    job_type: gpu_train
+    text: >-
+      My PyTorch run needs to write a checkpoint at the end of every epoch so I can resume it
+      later. How should I set the job up?
+
+  - id: gpu-v3
+    job_type: gpu_train
+    text: >-
+      How do I ask for accelerator hardware specifically, and do I need to request host cores and
+      memory separately when I do?
+
+  - id: sweep-v1
+    job_type: sweep
+    text: >-
+      I have several hundred input files and a script that processes one at a time. Each one is
+      independent. How should I run this without submitting them by hand?
+
+  - id: sweep-v2
+    job_type: sweep
+    text: >-
+      I want to try every combination of three parameters, sixty runs in total, each about an
+      hour. What is the best way to organise that?
+
+  - id: sweep-v3
+    job_type: sweep
+    text: >-
+      Is there a way to run the same simulation with two hundred different random seeds, and to
+      limit how many of them are running at once?
+
+  - id: mpi-v1
+    job_type: mpi
+    text: >-
+      Our fluid dynamics solver is MPI-parallel and we want to run it across several nodes. How do
+      I write the submission for that?
+
+  - id: mpi-v2
+    job_type: mpi
+    text: >-
+      How do I lay out processes per node and threads per process for a hybrid code that uses both
+      MPI and OpenMP?
+
+  - id: mpi-v3
+    job_type: mpi
+    text: >-
+      The code splits the domain across processes that exchange boundary data every timestep, so
+      they all have to be running together. What do I need to request?
+
+holdout:
+  - id: serial-h1
+    job_type: serial_cpu
+    text: >-
+      I want to run one R script that walks a results directory and produces summary tables.
+      Nothing about it is parallel. What does the submission look like?
+
+  - id: serial-h2
+    job_type: serial_cpu
+    text: >-
+      What is the right way to run a single long-running process and give it more memory than
+      whatever the default is?
+
+  - id: gpu-h1
+    job_type: gpu_train
+    text: >-
+      I would like to train a segmentation network overnight and continue tomorrow from where it
+      stopped. What should the submission script say?
+
+  - id: gpu-h2
+    job_type: gpu_train
+    text: >-
+      Our model does not fit in one device's memory budget for the batch size we want, so we are
+      replicating it and splitting the batch. How is that requested?
+
+  - id: sweep-h1
+    job_type: sweep
+    text: >-
+      I need to screen a compound library with one independent docking run per compound, a few
+      thousand of them. How do I set that up?
+
+  - id: sweep-h2
+    job_type: sweep
+    text: >-
+      Each of my tasks reads a different line of a list file and writes its own output. How does
+      a task find out which line it should be working on?
+
+  - id: mpi-h1
+    job_type: mpi
+    text: >-
+      I am running a lattice field theory code where every process has to talk to every other for
+      the whole run. How should I size the job?
+
+  - id: mpi-h2
+    job_type: mpi
+    text: >-
+      What is the correct way to start a distributed solver so that all of its processes come up
+      inside the same allocation at once?

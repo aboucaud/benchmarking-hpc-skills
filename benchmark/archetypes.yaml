@@ -1,0 +1,293 @@
+# HPC job types, sourced from facility documentation.
+#
+# Stage 0 of the skill forge (#48). This file says what each kind of job IS. What can go wrong with
+# it is the benchmark's business, not this file's — a job type described in terms of its failure
+# modes has been written from the answer key, and `tests/test_taxonomy_is_not_the_answer_key.py`
+# rejects it.
+#
+# Two rules are mechanical, and both exist because the first draft broke them:
+#
+#   NO MAGNITUDES IN PROSE. No digit appears in `title`, `what_it_computes`,
+#   `distinguishing_shape`, `scale_character` or `sibling_boundaries`. The portable artefact carries
+#   the practice; the site document carries the number. The first research pass wrote ~900 words per
+#   type stuffed with each centre's walltime ceilings and core counts, and was rejected for it — a
+#   definition that states one centre's envelope is that centre's fixture wearing a general name.
+#   `scheduler_features` and `provenance` are exempt: there a flag like `--gres=gpu:1` IS the
+#   content, and a citation is evidence rather than a claim.
+#
+#   VERBATIM CITATIONS ONLY. Every `supports` quotes text present on the page it names. The first
+#   pass produced citations whose quoted text appears zero times on the cited page. Every URL below
+#   was fetched and every quoted string located in the response before it was written here.
+#
+# `scheduler_features` lists what DISTINGUISHES a type, not everything it happens to use. An audit
+# of the first draft found that five of six features listed for `serial_cpu` also appear on IDRIS's
+# single-GPU page — only the device request separated them — which would make the lists useless to
+# anything routing on them.
+#
+# STATUS: machine-authored, audited twice, and NOT reviewed by anyone with sysadmin experience.
+# The same standing as the misuse cases under #10: usable as scaffolding, not yet evidence.
+#
+# Note for anyone re-fetching: archive.idris.fr serves no working TLS. `https` fails (curl exit 35)
+# and `http` returns 200, so a fetcher that silently upgrades http to https cannot read it at all.
+
+archetypes:
+  - id: serial_cpu
+    title: Single-node, single-task CPU batch job
+    measured: true
+    what_it_computes: >-
+      One program runs once on general-purpose processors and derives new values from its inputs:
+      a simulation or analysis binary, a compiled tool under a shell or Python driver, or a
+      preparation, reduction or plotting step. All state lives in one process image; any
+      parallelism is threads sharing that process's memory.
+    distinguishing_shape: >-
+      One node holds exactly one task, and that holds under scaling: a larger request buys cores
+      and memory on the same node, never more tasks or nodes. No accelerator is named, so the
+      request vocabulary is cores, memory and time. The payload is invoked directly, with no
+      launcher line and no index.
+    scale_character: >-
+      At most one node, bounded in wall-clock; breadth is cores and memory inside that node.
+      Whether part of a node may be requested, or shared with other jobs, is a site property.
+    scheduler_features:
+      - "--nodes=1 with --ntasks=1, invariant under scaling the request"
+      - "--mem or --mem-per-cpu sizing memory without taking a whole node"
+      - "no launcher line: the payload is invoked directly by the batch script"
+      - "no --array, and no device request of any kind"
+    sibling_boundaries: >-
+      Against mpi: there the task count comes from decomposing the state and a launcher starts the
+      rank set; here one task holds all state and nothing is launched. Against gpu_train: that
+      names accelerators as a term of the request; none is named here. Against sweep: that is one
+      submission expanding into indexed tasks; here one submission is one execution. Against
+      data_movement: its product is the same bytes elsewhere.
+    provenance:
+      - source: IDRIS (CNRS, Jean Zay) — Execution of a sequential job in batch
+        url: http://archive.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-exec_mono_batch-eng.html
+        supports: >-
+          "#SBATCH --nodes=1" with "#SBATCH --ntasks-per-node=1" and the payload line "./a.out" —
+          the one-node, one-task shape with no launcher.
+      - source: IDRIS (CNRS, Jean Zay) — Execution of an OpenMP parallel code in batch
+        url: http://archive.idris.fr/eng/jean-zay/cpu/jean-zay-cpu-exec_openmp_batch-eng.html
+        supports: >-
+          "#SBATCH --nodes=1", "#SBATCH --ntasks=1", "#SBATCH --cpus-per-task=20" and
+          "export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK" — the threaded variant holds one task
+          while cores widen.
+      - source: NERSC (US DOE, Perlmutter) — Example Jobs
+        url: https://docs.nersc.gov/jobs/examples/
+        supports: >-
+          "#SBATCH --nodes=1", "#SBATCH --ntasks=1" and "#SBATCH --mem=1GB" running "./serial.exe"
+          — the same shape with memory sized independently, at a second centre.
+
+  - id: gpu_train
+    title: Accelerator-resident model training run
+    measured: true
+    what_it_computes: >-
+      Model parameters are fitted to a dataset by repeated gradient updates, with the parameters
+      held in accelerator memory. Host processes read the data and stream mini-batches into the
+      devices. Progress is counted in epochs and iterations, and checkpoints are written as the run
+      proceeds so it can be resumed.
+    # This entry says out loud that its scheduler flags do not discriminate. That is the finding,
+    # not an omission, and it took three rejections to arrive at.
+    #
+    # Draft one opened with "accelerators are a term of the request in their own right" — equally
+    # true of a device-resident MPI job, so the field named `distinguishing` distinguished nothing.
+    # Draft two moved the same clause to the end of the sentence and led with replication instead:
+    # "the model is copied onto every device while the data is divided among them". That was worse.
+    # It is false for a single-device run, and false for sharded training (FSDP, ZeRO, tensor
+    # parallelism), where each device holds a piece — so `sibling_boundaries` then routed
+    # large-model training, the workload accelerators exist for, to `mpi`.
+    #
+    # The honest statement is that no submission-level flag separates this from a device-resident
+    # MPI job. The LUMI citation below is evidence *for that claim*: it is an explicitly MPI job
+    # carrying the same `--ntasks-per-node` / `--gpus-per-node` pairing an earlier draft offered as
+    # a discriminator. What separates the two is the payload, and the definition leads with it.
+    distinguishing_shape: >-
+      A device count appears in the request, but that is shared with any device-resident job and
+      does not settle the type. What settles it is the payload: parameters are fitted from a
+      dataset by repeated gradient updates, so the run is iterative over data rather than advancing
+      a decomposed state.
+    scale_character: >-
+      Length follows how many passes over the dataset are wanted rather than a fixed quantity of
+      arithmetic. Whether parameters are copied to every device or split across them varies with
+      the method and does not change the shape.
+    scheduler_features:
+      - "a device count in the submission: --gres=gpu:N, --gpus-per-node=N, --gpus-per-task=N — necessary, but shared with any device-resident job"
+      - "accelerator hardware named by constraint or partition: --constraint=gpu, --partition=standard-g — likewise shared"
+      - "no submission-level flag separates this from a device-resident MPI job; the separation is in what the payload does, so anything routing on flags alone will confuse the two"
+    sibling_boundaries: >-
+      Against mpi, including a device-resident one: there the work is advancing one decomposed
+      state and the rank count comes from that decomposition; here it is fitting parameters to a
+      dataset, however those parameters are spread across devices. No scheduler flag separates the
+      two — the payload does. Against sweep: that repeats a per-task request across an index range.
+      Against serial_cpu and data_movement: neither names a device.
+    provenance:
+      - source: IDRIS (CNRS, Jean Zay) — Data Parallelism with PyTorch
+        url: http://www.idris.fr/en/docs/jean-zay/intelligence_artificielle/distribution_parallelisme/data-parallelism-pytorch/
+        supports: >-
+          "The model is replicated on each GPU, but saving checkpoints can be performed by a single
+          GPU to limit write operations." and "each parallelised device processes different
+          mini-batches" and "The validation step, executed after each epoch or after a fixed number
+          of training iterations, can be distributed across all GPUs involved in model training." —
+          together: the model is copied while the data is split, one device can write a whole
+          checkpoint, and progress is counted in epochs and iterations.
+      - source: CSC (Finnish national centre) — Multi-GPU and multi-node machine learning
+        url: https://docs.csc.fi/support/tutorials/ml-multi/
+        supports: >-
+          "The typical approach in multi-GPU processing in deep learning is to launch one CPU
+          control process for each GPU." — the process count follows the device count.
+      - source: IDRIS (CNRS, Jean Zay) — Execution of a single-GPU job in batch
+        url: http://archive.idris.fr/eng/jean-zay/gpu/jean-zay-gpu-exec_mono_batch-eng.html
+        supports: >-
+          "#SBATCH --gres=gpu:1" — one spelling of the device term. Cited for the flag only: this
+          page describes a single-device batch job and says nothing about training.
+      - source: LUMI (EuroHPC) — LUMI-G example batch script, "MPI-based job"
+        url: https://docs.lumi-supercomputer.eu/runjobs/scheduled-jobs/lumig-job/
+        supports: >-
+          "MPI-based job" introducing "a job script to launch an application with one MPI rank per
+          GPU (GCD)", carrying "--ntasks-per-node=8" and "--gpus-per-node=8". Cited as evidence
+          *against* using those flags as a discriminator: the same pairing an earlier draft offered
+          to separate this type from mpi appears here on an explicitly MPI job.
+
+  - id: sweep
+    title: Indexed job array of independent similar tasks
+    measured: true
+    what_it_computes: >-
+      One program is run once per element of an enumerated index set: parameter tuples, input
+      files, seeds or dataset shards. Each task derives its own inputs and output names from its
+      index and exchanges nothing with the others while running. The product is the assembled
+      collection of per-task results.
+    distinguishing_shape: >-
+      One submitted script expands into many independently schedulable copies of itself,
+      distinguished only by an index. Parallelism lives in the index range rather than in
+      communicating ranks. The per-task request is written once and stays fixed as the range
+      widens; range width and the cap on simultaneously running tasks are separate.
+    scale_character: >-
+      Per-task footprint is whatever a single task needs and does not change as the range widens.
+      What is in flight at any moment, not the range width, sets the total.
+    scheduler_features:
+      - "--array with contiguous ranges, explicit index lists and strides"
+      - "the % suffix on --array capping how many tasks run at once"
+      - "SLURM_ARRAY_TASK_ID as the per-task selector for input, parameter, seed or shard"
+      - "%A and %a in --output/--error so each task writes its own stream"
+    sibling_boundaries: >-
+      Read the submission, not the science. The tell is an index range: one script, a range, a
+      per-task request repeated across it. serial_cpu is the same body submitted once with no
+      index. mpi and gpu_train state one aggregate rank or device count for a single allocation; a
+      sweep repeats a per-task count, so an array of either is still a sweep. data_movement names
+      an endpoint, not an index.
+    provenance:
+      - source: ARCHER2 (EPCC, UK national service) — User Guide, Scheduler
+        url: https://docs.archer2.ac.uk/user-guide/scheduler/
+        supports: >-
+          "The Slurm job scheduling system offers the job array concept, for running collections of
+          almost-identical jobs. For example, running the same program several times with different
+          arguments or input data."
+      - source: LUMI (EuroHPC) — Array Jobs
+        url: https://docs.lumi-supercomputer.eu/runjobs/scheduled-jobs/throughput/
+        supports: >-
+          "Slurm job arrays provide a way to submit a large number of independent jobs. When a job
+          array script is submitted, a specified number of array tasks are created from the batch
+          script." — one script expanding into many copies.
+      - source: CSC (Finnish national centre) — Array jobs
+        url: https://docs.csc.fi/computing/running/array-jobs/
+        supports: >-
+          "All subjobs are launched in the batch job system at once, and they are executed using as
+          many processors as are available." — what is in flight, not the range width, sets the
+          total.
+      - source: IDRIS (GENCI, Jean Zay) — Job arrays
+        url: http://www.idris.fr/en/docs/jean-zay/slurm/exec_jobarray
+        supports: >-
+          "Job arrays allow a user to submit a collection of similar jobs at once." — the index
+          range as the submission tell.
+
+  - id: mpi
+    title: Tightly coupled multi-rank MPI job
+    measured: true
+    what_it_computes: >-
+      One program runs as many ranks that share no memory, so every coordination step is an
+      explicit message: point-to-point exchanges and collectives. The ranks jointly hold one
+      decomposed state — a domain, mesh, lattice or matrix — and advance it together, so the result
+      exists only across the whole rank set.
+    distinguishing_shape: >-
+      One submission, one allocation, one launch: a single launcher command starts the entire rank
+      set at once inside one reservation. The request is a rank grid — nodes, processes per node,
+      threads per process — and its size follows how the problem was decomposed, so the allocation
+      rather than any rank is the unit of work.
+    scale_character: >-
+      Node count is the primary dial and grows with the decomposition; ranks fill each node's
+      cores. Hybrid variants trade fewer, wider ranks against more threads each. The wall-clock
+      request covers one continuous run of the whole set.
+    scheduler_features:
+      - "--ntasks and --ntasks-per-node laying out a rank grid across --nodes"
+      - "a launcher command starting the whole rank set inside one allocation"
+      - "--cpus-per-task with OMP_NUM_THREADS for the hybrid variant"
+      - "placement and affinity flags: --distribution, --cpu-bind"
+    sibling_boundaries: >-
+      Against gpu_train: there scale follows a device count that appears in the request; here ranks
+      follow the problem's decomposition and no device term is required. Against sweep: that
+      submits an index range of independently schedulable tasks; this is one reservation launched
+      once. Against serial_cpu: that is one task with no launcher. Against data_movement: that
+      relocates bytes; this advances a distributed computation.
+    provenance:
+      - source: NERSC (US DOE) — Introduction to MPI
+        url: https://docs.nersc.gov/development/programming-models/mpi/
+        supports: >-
+          "The Message Passing Interface Standard (MPI) is a message passing library standard based
+          on the consensus of the MPI Forum" — coordination by explicit message.
+      - source: Jülich Supercomputing Centre (JSC) — JUWELS batch system
+        url: https://apps.fz-juelich.de/jsc/hps/juwels/batchsystem.html
+        supports: >-
+          "To execute parallel MPI tasks users call srun within their script." — one launcher
+          starting the rank set from inside the submission.
+      - source: ARCHER2 (EPCC) — User Guide, Scheduler
+        url: https://docs.archer2.ac.uk/user-guide/scheduler/
+        supports: >-
+          "In addition, parallel jobs will also need to specify how many nodes, parallel processes
+          and threads they require." — the rank grid of nodes, processes per node and threads per
+          process.
+
+  - id: data_movement
+    title: Data relocation and packing between storage areas
+    # Documented but not measured: it maps to a real facility axis and no current case exercises
+    # staging, so it belongs in the taxonomy and not in the matrix. The routing design's open
+    # question 1, answered without displacing one of the four that are measured.
+    measured: false
+    what_it_computes: >-
+      The payload is existing bytes changing location or container rather than new values being
+      derived. The job copies, moves, synchronises or packs files between the storage areas a
+      facility exposes, or between that storage and an endpoint elsewhere. Its product is the same
+      content made reachable somewhere else.
+    distinguishing_shape: >-
+      The request does not scale with the work: one task, no device, the same allocation whether
+      one file or a whole dataset moves. Placement follows reachability — the job runs where the
+      target area is mounted, on the movement queue or transfer node a facility provides — and it
+      sits before or after a compute run.
+    scale_character: >-
+      Duration is set by volume and media latency rather than by arithmetic, so wall-clock can be
+      long while the allocation stays flat. Throughput follows the filesystem or network path
+      rather than core count.
+    scheduler_features:
+      - "a movement partition or transfer node rather than a compute partition"
+      - "the payload is a filesystem or transfer verb rather than a program"
+      - "--dependency joining the stage step to the production job"
+    sibling_boundaries: >-
+      Serial CPU work shares the single-task request but derives new content and is placed by where
+      its executable runs; this shape is placed by where a storage area is reachable, and its
+      output is the same content elsewhere. mpi sizes ranks by decomposition, a sweep carries an
+      index range, accelerator training states a device count — none appears here, and none turns
+      on a destination.
+    provenance:
+      - source: IDRIS (Jean Zay) — The pre/post-processing, visu and archive Slurm partitions
+        url: http://archive.idris.fr/eng/jean-zay/pre-post/jean-zay-pre-post_partition_slurm-eng.html
+        supports: >-
+          "The archive partition is dedicated to data management (copying or moving files, creating
+          archive files)" — copy, move and pack as the payload, on a partition of its own.
+      - source: CINES — Adastra user documentation, Data storage and transfers
+        url: https://dci.dci-gitlab.cines.fr/webextranet/data_storage_and_transfers/index.html
+        supports: >-
+          "store is not available on compute nodes" — placement follows which storage area is
+          reachable from where the job runs.
+      - source: NERSC (US DOE) — Data Transfer Nodes
+        url: https://docs.nersc.gov/systems/dtn/
+        supports: >-
+          "The data transfer nodes are NERSC servers dedicated to performing transfers between
+          NERSC data storage resources such as HPSS, the Community File System, Perlmutter Scratch,
+          and storage resources at other sites." — a node kind provided for movement.

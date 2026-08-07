@@ -25,6 +25,11 @@ BENCHMARK = REPO / "benchmark"                     # the data half of the split
 CENTER = BENCHMARK / "center.yaml"                 # the single source of truth
 CASES = BENCHMARK / "cases"
 GENERATED = BENCHMARK / "generated"
+# Stage 0 of the skill forge (#48). Both sit directly under `benchmark/`, never inside `cases/` —
+# they are inputs to authoring, not things an episode runs, and a directory under `cases/` is read
+# as a case by `validate_cases.py` and by both harnesses' `all`.
+ARCHETYPES = BENCHMARK / "archetypes.yaml"
+PROBES = BENCHMARK / "routing-probes.yaml"
 # Where a facility publishes its document. Generated from CENTER, same bytes as
 # GENERATED/INSTRUCTIONS.md — the Docker substrate reads it from here (#29).
 AGENTS = REPO / "agents"
