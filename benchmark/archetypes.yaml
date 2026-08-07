@@ -80,50 +80,71 @@ archetypes:
     title: Accelerator-resident model training run
     measured: true
     what_it_computes: >-
-      Iterative gradient-based fitting of model parameters held in accelerator memory. Host
-      processes read a dataset and stream minibatches into the devices; where several devices take
-      part, the model is replicated across them rather than decomposed among them. Progress is
-      counted in epochs and iterations, and checkpoints are written as the run proceeds.
+      Model parameters are fitted to a dataset by repeated gradient updates, with the parameters
+      held in accelerator memory. Host processes read the data and stream mini-batches into the
+      devices. Progress is counted in epochs and iterations, and checkpoints are written as the run
+      proceeds so it can be resumed.
+    # This entry says out loud that its scheduler flags do not discriminate. That is the finding,
+    # not an omission, and it took three rejections to arrive at.
+    #
+    # Draft one opened with "accelerators are a term of the request in their own right" — equally
+    # true of a device-resident MPI job, so the field named `distinguishing` distinguished nothing.
+    # Draft two moved the same clause to the end of the sentence and led with replication instead:
+    # "the model is copied onto every device while the data is divided among them". That was worse.
+    # It is false for a single-device run, and false for sharded training (FSDP, ZeRO, tensor
+    # parallelism), where each device holds a piece — so `sibling_boundaries` then routed
+    # large-model training, the workload accelerators exist for, to `mpi`.
+    #
+    # The honest statement is that no submission-level flag separates this from a device-resident
+    # MPI job. The LUMI citation below is evidence *for that claim*: it is an explicitly MPI job
+    # carrying the same `--ntasks-per-node` / `--gpus-per-node` pairing an earlier draft offered as
+    # a discriminator. What separates the two is the payload, and the definition leads with it.
     distinguishing_shape: >-
-      Accelerators are a term of the request in their own right, beside nodes and tasks: a device
-      count appears in the submission itself. Scale follows that device count rather than a
-      decomposition of the problem, since the model is replicated across devices rather than
-      divided among them.
+      A device count appears in the request, but that is shared with any device-resident job and
+      does not settle the type. What settles it is the payload: parameters are fitted from a
+      dataset by repeated gradient updates, so the run is iterative over data rather than advancing
+      a decomposed state.
     scale_character: >-
-      The device count is the scale knob, not the core or node count. Length is denominated in
-      epochs and iterations rather than a fixed quantity of arithmetic; checkpointing makes the run
-      divisible along time.
+      Length follows how many passes over the dataset are wanted rather than a fixed quantity of
+      arithmetic. Whether parameters are copied to every device or split across them varies with
+      the method and does not change the shape.
     scheduler_features:
-      - "a device count stated in the submission: --gres=gpu:N, --gpus-per-node=N, --gpus-per-task=N"
-      - "accelerator hardware named by constraint or partition: --constraint=gpu, --partition=standard-g"
-      - "--ntasks-per-node matched to the node's device count rather than to its cores"
+      - "a device count in the submission: --gres=gpu:N, --gpus-per-node=N, --gpus-per-task=N — necessary, but shared with any device-resident job"
+      - "accelerator hardware named by constraint or partition: --constraint=gpu, --partition=standard-g — likewise shared"
+      - "no submission-level flag separates this from a device-resident MPI job; the separation is in what the payload does, so anything routing on flags alone will confuse the two"
     sibling_boundaries: >-
-      Against mpi, including a device-resident one: there the rank count comes from decomposing the
-      state and each rank holds a piece; here the model is replicated and scale follows the devices
-      requested. Against sweep: that divides along a data or parameter axis into indexed tasks,
-      while this divides only along time, at a checkpoint. Against serial_cpu and data_movement: no
-      device count appears in either.
+      Against mpi, including a device-resident one: there the work is advancing one decomposed
+      state and the rank count comes from that decomposition; here it is fitting parameters to a
+      dataset, however those parameters are spread across devices. No scheduler flag separates the
+      two — the payload does. Against sweep: that repeats a per-task request across an index range.
+      Against serial_cpu and data_movement: neither names a device.
     provenance:
       - source: IDRIS (CNRS, Jean Zay) — Data Parallelism with PyTorch
         url: http://www.idris.fr/en/docs/jean-zay/intelligence_artificielle/distribution_parallelisme/data-parallelism-pytorch/
         supports: >-
           "The model is replicated on each GPU, but saving checkpoints can be performed by a single
-          GPU to limit write operations." — replication across devices, and checkpointing during
-          the run.
+          GPU to limit write operations." and "each parallelised device processes different
+          mini-batches" and "The validation step, executed after each epoch or after a fixed number
+          of training iterations, can be distributed across all GPUs involved in model training." —
+          together: the model is copied while the data is split, one device can write a whole
+          checkpoint, and progress is counted in epochs and iterations.
+      - source: CSC (Finnish national centre) — Multi-GPU and multi-node machine learning
+        url: https://docs.csc.fi/support/tutorials/ml-multi/
+        supports: >-
+          "The typical approach in multi-GPU processing in deep learning is to launch one CPU
+          control process for each GPU." — the process count follows the device count.
       - source: IDRIS (CNRS, Jean Zay) — Execution of a single-GPU job in batch
         url: http://archive.idris.fr/eng/jean-zay/gpu/jean-zay-gpu-exec_mono_batch-eng.html
         supports: >-
-          "#SBATCH --gres=gpu:1" — the device count appears in the submission as its own term.
-      - source: NERSC (US DOE, Perlmutter) — Example Jobs
-        url: https://docs.nersc.gov/jobs/examples/
-        supports: >-
-          "#SBATCH --gpus-per-node=4" alongside "--constraint=gpu" — a second spelling of the
-          device term, with the hardware named by constraint.
-      - source: LUMI (EuroHPC) — LUMI-G example batch script
+          "#SBATCH --gres=gpu:1" — one spelling of the device term. Cited for the flag only: this
+          page describes a single-device batch job and says nothing about training.
+      - source: LUMI (EuroHPC) — LUMI-G example batch script, "MPI-based job"
         url: https://docs.lumi-supercomputer.eu/runjobs/scheduled-jobs/lumig-job/
         supports: >-
-          "#SBATCH --gpus-per-node=8" with "--partition=standard-g" — a third spelling, with the
-          hardware named by partition.
+          "MPI-based job" introducing "a job script to launch an application with one MPI rank per
+          GPU (GCD)", carrying "--ntasks-per-node=8" and "--gpus-per-node=8". Cited as evidence
+          *against* using those flags as a discriminator: the same pairing an earlier draft offered
+          to separate this type from mpi appears here on an explicitly MPI job.
 
   - id: sweep
     title: Indexed job array of independent similar tasks
